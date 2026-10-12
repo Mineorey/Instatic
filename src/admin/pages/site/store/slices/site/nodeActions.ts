@@ -32,6 +32,14 @@ import {
   reindexNodeParents,
 } from '@core/page-tree'
 import type { NodeTree, PageNode, SiteDocument } from '@core/page-tree'
+import {
+  applyParagraphRuns,
+  normalizeRuns,
+  paragraphFingerprint,
+  readParagraphRuns,
+  type ParagraphCommitResult,
+} from '@core/paragraph'
+import { effectiveTextFormats } from '@core/text-formats'
 import { subtreeHasOutlet, treeHasOutlet } from '@core/templates'
 import { wouldCreateCycle, syncSlotInstances, applySlotSyncResult } from '@core/visualComponents'
 import { pushToast } from '@ui/components/Toast'
@@ -50,6 +58,7 @@ type NodeActions = Pick<
   | 'insertNode'
   | 'insertComponentRef'
   | 'insertImportedNodes'
+  | 'commitParagraphRuns'
   | 'deleteNode'
   | 'deleteNodes'
   | 'updateNodeProps'
@@ -446,6 +455,33 @@ export function createNodeActions(helpers: SiteSliceHelpers): NodeActions {
         moveNodes(tree, nodeIds, newParentId, newIndex)
         return true
       })
+    },
+
+    commitParagraphRuns: (target, runs, baseline) => {
+      // Widened via `as`: TS would otherwise narrow `result` to the initializer
+      // and miss the assignments inside the recipe closure.
+      let result = { status: 'unchanged' } as ParagraphCommitResult
+      // One recipe = one undo entry, so the node replacement on expand/collapse
+      // reverts with a single undo(). Formats are resolved against the draft
+      // site so the fingerprint uses the same formats the session started with
+      // unless the site's text formats changed meanwhile (→ conflict).
+      const accepted = mutateActiveTreeAndSite((tree, site) => {
+        const formats = effectiveTextFormats(site.settings.textFormats, site.styleRules)
+        if (!tree.nodes[target.nodeId] || paragraphFingerprint(tree, target, formats) !== baseline) {
+          result = { status: 'conflict' }
+          return false
+        }
+        // Normalized runs are only compared here and fed to the apply plan —
+        // they are never written back into the live editor session.
+        const before = JSON.stringify(normalizeRuns(readParagraphRuns(tree, target, formats)))
+        if (before === JSON.stringify(normalizeRuns(runs))) return false
+        result = { status: 'applied', nodeId: applyParagraphRuns(tree, target, runs, formats) }
+        return true
+      })
+      // The collab write gate refused the edit (and already told the user):
+      // nothing landed, so do not hand callers a node id that exists nowhere.
+      if (!accepted && result.status === 'applied') return { status: 'unchanged' }
+      return result
     },
 
     duplicateNode: (nodeId) => {

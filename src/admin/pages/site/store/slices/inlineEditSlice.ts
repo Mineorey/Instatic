@@ -60,6 +60,8 @@ export const createInlineEditSlice: EditorStoreSliceCreator<InlineEditSlice> = (
 
   startInlineEdit: (nodeId, breakpointId) => {
     const state = get()
+    // One canvas text editor at a time: paragraph mode owns the keyboard.
+    if (state.activeParagraphEdit) return
     const node = getActiveTree(state)?.nodes[nodeId]
     if (!node) return
     const def = registry.get(node.moduleId)

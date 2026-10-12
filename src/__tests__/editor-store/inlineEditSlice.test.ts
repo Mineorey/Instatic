@@ -36,6 +36,7 @@ beforeEach(() => {
     activePageId: null,
     activeDocument: null,
     activeInlineEdit: null,
+    activeParagraphEdit: null,
     selectedNodeId: null,
     selectedNodeIds: [],
     hoveredNodeId: null,
@@ -110,6 +111,13 @@ describe('startInlineEdit', () => {
   it('no-ops for unknown node ids', () => {
     setupSiteWithTextNode()
     useEditorStore.getState().startInlineEdit('does-not-exist', 'bp-desktop')
+    expect(useEditorStore.getState().activeInlineEdit).toBeNull()
+  })
+
+  it('no-ops while a paragraph edit session owns the keyboard', () => {
+    const { nodeId } = setupSiteWithTextNode()
+    expect(useEditorStore.getState().startParagraphEdit(nodeId, 'bp-desktop')).toBe(true)
+    useEditorStore.getState().startInlineEdit(nodeId, 'bp-desktop')
     expect(useEditorStore.getState().activeInlineEdit).toBeNull()
   })
 })

@@ -208,6 +208,7 @@
     "metaDescription": "Testing round-trips",
     "language": "en",
     "shortcuts": { "save": "ctrl+s" },
+    "textFormats": { "formats": [{ "id": "bold", "label": "Bold", "tag": "strong", "classIds": [] }], "link": { "classIds": [] } },
     "framework": {
       "colors": {
         "tokens": [

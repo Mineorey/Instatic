@@ -75,6 +75,7 @@ export interface CommandContext {
     canRedo: boolean
     activeBreakpointId: string
     activeInlineEdit: boolean
+    activeParagraphEdit: boolean
   }
 }
 

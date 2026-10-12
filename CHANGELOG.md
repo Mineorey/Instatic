@@ -4,6 +4,13 @@ All notable changes to Instatic will be documented here.
 
 This project is pre-1.0. Breaking changes may appear in minor or patch releases until a stable release line exists.
 
+## Unreleased
+
+### Features
+
+- Edit paragraphs as a whole on the canvas and format selected words (bold, italic, links) from a floating menu. A new *Text formats* setting decides which tag and classes each format writes.
+- A text format can also recognize further classes ("Also recognize"), so a site that uses several look-alike bold classes edits all of them as Bold. Format buttons that are unavailable over unknown formatting now say which formatting it is and where to add it.
+
 ## 0.0.20 - 2026-09-13
 
 ### Features

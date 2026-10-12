@@ -103,6 +103,14 @@ describe('validateSite — round-trip with representative fixture', () => {
     expect(result.files[0].path).toBe('src/components/MyButton.tsx')
   })
 
+  it('preserves settings.textFormats', () => {
+    const result = validateSite(loadFixture())
+    expect(result.settings.textFormats).toEqual({
+      formats: [{ id: 'bold', label: 'Bold', tag: 'strong', classIds: [] }],
+      link: { classIds: [] },
+    })
+  })
+
   it('preserves framework preferences (non-default values if set)', () => {
     const result = validateSite(loadFixture())
     expect(result.settings.framework?.preferences?.rootFontSize).toBe(10)

@@ -28,6 +28,7 @@ import { Type, type Static } from '@core/utils/typeboxHelpers'
 import { compiledCheck } from '@core/utils/typeboxCompiler'
 import { FrameworkSettingsSchema } from '@core/framework-schema'
 import { SiteFontsSettingsSchema, parseSiteFontsSettings } from '@core/fonts'
+import { TextFormatsSettingsSchema, parseTextFormatsSettings } from '@core/text-formats'
 
 // ---------------------------------------------------------------------------
 // SiteSettingsSchema
@@ -42,6 +43,8 @@ export const SiteSettingsSchema = Type.Object({
   framework: Type.Optional(FrameworkSettingsSchema),
   /** Library of installed fonts — absent when no fonts added. */
   fonts: Type.Optional(SiteFontsSettingsSchema),
+  /** Inline formats for the paragraph editor — absent means defaults (see resolveTextFormats). */
+  textFormats: Type.Optional(TextFormatsSettingsSchema),
   /** Keyboard shortcut overrides — defaults to {} — handled in parseSiteSettings. */
   shortcuts: Type.Record(Type.String(), Type.String()),
 })
@@ -85,6 +88,7 @@ export function parseSiteSettings(raw: unknown): SiteSettings {
     : undefined
 
   const fonts = r.fonts != null ? parseSiteFontsSettings(r.fonts) : undefined
+  const textFormats = parseTextFormatsSettings(r.textFormats)
 
   return {
     ...(typeof r.metaTitle === 'string' ? { metaTitle: r.metaTitle } : {}),
@@ -93,6 +97,7 @@ export function parseSiteSettings(raw: unknown): SiteSettings {
     ...(typeof r.language === 'string' ? { language: r.language } : {}),
     framework,
     fonts,
+    ...(textFormats ? { textFormats } : {}),
     shortcuts,
   }
 }

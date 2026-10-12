@@ -45,7 +45,8 @@ const STYLE_TAG_ID = 'instatic-editor-chrome'
 
 /**
  * Design tokens to forward from the parent document's :root onto the iframe's
- * :root. These are exactly the tokens referenced in CHROME_RULES below.
+ * :root. These are the tokens referenced in CHROME_RULES below, plus the
+ * selection-ring colour the paragraph-mode editor outline uses.
  * Copying at runtime keeps globals.css as the single source of truth — no
  * duplicated literal values anywhere.
  */
@@ -65,6 +66,9 @@ const CHROME_TOKENS = [
   '--border-muted',
   '--border',
   '--danger',
+  // Not used by CHROME_RULES: paragraph mode's host outline
+  // (injectParagraphEditorStyles) reads it inside the iframe.
+  '--canvas-selection-ring-color',
 ] as const
 
 /**

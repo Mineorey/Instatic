@@ -57,7 +57,13 @@ import { clientPointToEditorDoc } from './canvasDomGeometry'
 import { useConfirmDelete } from '@admin/shared/dialogs/ConfirmDeleteDialog'
 import { useEditorPreference, readEditorSelectPreference } from '@site/preferences/editorPreferences'
 import { useTemplatePreviewContext } from '@site/hooks/useTemplatePreviewContext'
+import { isCanvasTextEditing } from '@site/store/textEditing'
+import { startParagraphOrInlineEdit } from './paragraph/paragraphHostClaim'
+// Paragraph mode's formatting menu and editor pull in TipTap — separate
+// chunks, preloaded once the editable canvas is idle (see below).
+import { ParagraphBubbleMenu, preloadParagraphMode } from './paragraph/paragraphModeLoader'
 import styles from './CanvasRoot.module.css'
+import { userDisplayLabel } from '@core/users/displayName'
 
 const VisualComponentModeControl = lazy(() =>
   import('./VisualComponentModeControl').then((module) => ({ default: module.default })),
@@ -66,6 +72,7 @@ const VisualComponentModeControl = lazy(() =>
 const TemplateModeControl = lazy(() =>
   import('./TemplateModeControl').then((module) => ({ default: module.default })),
 )
+
 
 /**
  * Stable empty-breakpoints sentinel — used as the `?? fallback` in the
@@ -92,7 +99,10 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
     currentUser
       ? {
           id: currentUser.id,
-          name: currentUser.displayName,
+          // Never empty: an admin without a display name would otherwise
+          // publish no presence at all (peers saw no cursor, and the
+          // "someone else is editing" guards never fired).
+          name: userDisplayLabel(currentUser),
           avatarUrl: currentUser.avatarUrl,
           gravatarHash: currentUser.gravatarHash,
         }
@@ -130,7 +140,7 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   const cutNodes = useEditorStore((s) => s.cutNodes)
   const pasteNode = useEditorStore((s) => s.pasteNode)
   const setActiveBreakpoint = useEditorStore((s) => s.setActiveBreakpoint)
-  const startInlineEdit = useEditorStore((s) => s.startInlineEdit)
+  const paragraphEditing = useEditorStore((s) => s.activeParagraphEdit !== null)
   const setFocusedPanel = useEditorStore((s) => s.setFocusedPanel)
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument)
   const activeDocument = useEditorStore((s) => s.activeDocument)
@@ -314,20 +324,47 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   }
 
   /**
-   * Double-click on a canvas node → start an inline text-edit session when
-   * the node's module declares `inlineTextEdit` (base.text, base.button,
-   * childless base.link — `startInlineEdit` resolves the contract and
-   * no-ops for everything else, so other modules keep the old no-op).
+   * Double-click on a canvas node → paragraph mode first: when the node is a
+   * paragraph (or a run inside one) and the clicked render path may host the
+   * editor (`paragraphHostAllowed` — false in loop iterations and snapshot
+   * frames), `startParagraphEdit` opens a rich-text session; the click's
+   * iframe coordinates place the caret. Otherwise fall back to the plain inline text-edit session when the node's
+   * module declares `inlineTextEdit` (base.text, base.button, childless
+   * base.link — `startInlineEdit` resolves the contract and no-ops for
+   * everything else, so other modules keep the old no-op).
    *
    * Design-canvas only: the editing element lives inside a breakpoint iframe,
    * so a live-mode double-click must not open a session. Entering VC canvas
    * mode on double-click stays removed — VC entry works from the Site panel
    * and Spotlight (see `docs/features/canvas-iframe-per-frame.md`).
    */
-  const onNodeDoubleClick = (nodeId: string, e: React.MouseEvent, breakpointId?: string) => {
+  // Warm paragraph mode's chunks once the editable canvas is idle, so the
+  // first double-click mounts the editor at once instead of waiting on them.
+  const canEditContent = permissions.canEditContent
+  useEffect(() => {
+    if (isLive || !editable || !canEditContent) return
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, options?: { timeout?: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(preloadParagraphMode, { timeout: 3000 })
+      return () => w.cancelIdleCallback?.(id)
+    }
+    const timer = window.setTimeout(preloadParagraphMode, 1000)
+    return () => window.clearTimeout(timer)
+  }, [isLive, editable, canEditContent])
+
+  const onNodeDoubleClick = (
+    nodeId: string,
+    e: React.MouseEvent,
+    breakpointId?: string,
+    paragraphHostAllowed = true,
+  ) => {
     e.stopPropagation()
     if (isLive || !editable || !permissions.canEditContent) return
-    startInlineEdit(nodeId, breakpointId ?? activeBreakpointId)
+    const bp = breakpointId ?? activeBreakpointId
+    startParagraphOrInlineEdit(nodeId, bp, { x: e.clientX, y: e.clientY }, paragraphHostAllowed)
   }
 
   // Context carries only stable callbacks — selectedNodeId/hoveredNodeId are
@@ -386,7 +423,7 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return
-      if (useEditorStore.getState().activeInlineEdit) return
+      if (isCanvasTextEditing(useEditorStore.getState())) return
       if (!deleteBinding.match(event)) return
       if (!isCanvasEvent(event)) return
 
@@ -587,6 +624,17 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
             />
           ) : null}
         </div>
+
+        {/* Paragraph-mode formatting menu + link panel. Portaled to the editor
+            body and deliberately mounted OUTSIDE the canvas div: React events
+            bubble through portals along the component tree, so inside it a
+            press on the menu would reach the canvas div's pan/zoom gesture
+            handlers, its background-click deselect and its key handler. */}
+        {paragraphEditing && (
+          <Suspense fallback={null}>
+            <ParagraphBubbleMenu />
+          </Suspense>
+        )}
       </CanvasSelectionContext.Provider>
     </CanvasViewportActionsContext.Provider>
   )

@@ -275,6 +275,8 @@ Deep imports into these engine modules are enforced by `src/__tests__/architectu
 - `@core/fonts`
 - `@core/collab`
 - `@core/registry` — TypeBox shapes for the npm registry proxy plus the ESM-entry preflight shared by the importmap builder and the Dependencies panel
+- `@core/paragraph` — paragraph mode's pure run model: read, normalize, apply, conflict fingerprint, link-href policy
+- `@core/text-formats` — the `textFormats` site setting: lenient schema, tolerant parser, defaults
 
 Note: `@core/framework-schema` is a dependency of both `@core/page-tree` (for `FrameworkSettingsSchema` and `GeneratedClassMetadataSchema`) and `@core/framework` (for the persisted data shapes). This arrangement keeps the module graph one-directional — the engine depends on the schema leaf, not on the page tree. Any other module barrel is still a convention without a gate; treat deep imports in those as drift and migrate them to the barrel as part of whatever change you're making.
 

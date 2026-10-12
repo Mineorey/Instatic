@@ -1,6 +1,7 @@
 import { filterCommands, getAllCommands } from './commandRegistry'
 import { KEYBINDINGS, type KeyEventLike } from './keybindings'
 import type { Command, CommandContext } from './types'
+import { isCanvasTextEditing } from '@site/store/textEditing'
 
 const CANVAS_ROOT_SELECTOR = '[data-instatic-canvas-root="true"]'
 const LAYER_TREE_SELECTOR = '[data-instatic-layer-tree="true"]'
@@ -62,7 +63,7 @@ export function findMatchingShortcutCommand(
 
   for (const binding of KEYBINDINGS) {
     if (COMPONENT_OWNED_SHORTCUTS.has(binding.commandId)) continue
-    if (binding.scope === 'canvas' && context.editor?.activeInlineEdit) continue
+    if (binding.scope === 'canvas' && context.editor && isCanvasTextEditing(context.editor)) continue
     if (binding.scope === 'canvas' && !isLayerShortcutSurface(event)) continue
     if (shouldIgnoreEditableTarget(binding.commandId) && isEditableShortcutTarget(event.target)) continue
     if (!binding.match(event as KeyEventLike)) continue

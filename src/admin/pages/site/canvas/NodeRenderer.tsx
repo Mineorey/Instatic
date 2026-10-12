@@ -27,6 +27,7 @@ import { attachInlineEditRemoteMerge } from '@site/collab/inlineEditRemoteMerge'
 import { collabDocFor } from '@site/store/slices/site/collabBinding'
 import { useEditorStore, selectActiveCanvasPage } from '@site/store/store'
 import { resolveProps } from '@core/page-tree'
+import { htmlAttributesForReact } from '@core/htmlAttributes'
 import { registry } from '@core/module-engine'
 import type { NodeWrapperProps as NodeWrapperPropsType } from '@core/module-engine'
 import { resolveDynamicProps, effectiveNodeBindings, type TemplateRenderDataContext } from '@core/templates/dynamicBindings'
@@ -34,7 +35,12 @@ import type { PageNode } from '@core/page-tree'
 import { WarningDiamondSolidIcon } from 'pixel-art-icons/icons/warning-diamond-solid'
 import { ErrorBoundary } from '@ui/components/ErrorBoundary'
 import { ModuleSandboxFrame } from './ModuleSandboxFrame'
-import { CanvasBreakpointContext, CanvasSelectionContext, CanvasTemplateContext } from './CanvasContexts'
+import {
+  CanvasBreakpointContext,
+  CanvasParagraphHostContext,
+  CanvasSelectionContext,
+  CanvasTemplateContext,
+} from './CanvasContexts'
 import {
   addEditorFormPreviewProps,
   resolveEditorFormPreviewState,
@@ -44,6 +50,7 @@ import { useResponsiveBackgroundStyle } from '@admin/pages/media/hooks/useRespon
 import { getCanvasNodeClassIds, getCanvasNodeClassName } from './canvasNodeClassName'
 import { findEnclosingComponentRef, type AnnotatedPageNode } from './canvasSelectionUtils'
 import { useLoopPreviewItems } from './useLoopPreviewItems'
+import { ParagraphEditHost } from './paragraph/ParagraphEditHost'
 import styles from './NodeRenderer.module.css'
 
 // ---------------------------------------------------------------------------
@@ -62,6 +69,7 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
   const node = useEditorStore((s) => selectActiveCanvasPage(s)?.nodes[nodeId] ?? null)
   const breakpointId = use(CanvasBreakpointContext)
   const templateContext = use(CanvasTemplateContext)
+  const paragraphHostAllowed = use(CanvasParagraphHostContext)
 
   // Per-node selection/hover subscriptions (Perf fix — Contribution #495).
   // Only the 2 nodes whose boolean flips will re-render on any selection/hover
@@ -98,6 +106,14 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
     s.activeInlineEdit?.nodeId === nodeId && s.activeInlineEdit.breakpointId === breakpointId
       ? s.activeInlineEdit.multiline
       : false,
+  )
+  // Paragraph mode — the paragraph's tag while THIS node is the session's
+  // paragraph in THIS frame, else null. A primitive keeps the per-node
+  // selector stable; TipTap then owns the element's content (ParagraphEditHost).
+  const paragraphEditTag = useEditorStore((s) =>
+    s.activeParagraphEdit?.target.nodeId === nodeId && s.activeParagraphEdit.breakpointId === breakpointId
+      ? s.activeParagraphEdit.target.tag
+      : null,
   )
   const applyInlineEditValue = useEditorStore((s) => s.applyInlineEditValue)
   const endInlineEdit = useEditorStore((s) => s.endInlineEdit)
@@ -324,7 +340,7 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
       if (isCanvasEditorControlTarget(e.target, e.currentTarget)) return
       e.preventDefault()
       e.stopPropagation()
-      onNodeDoubleClick(nodeId, e as unknown as React.MouseEvent, breakpointId)
+      onNodeDoubleClick(nodeId, e as unknown as React.MouseEvent, breakpointId, paragraphHostAllowed)
     },
     onDoubleClick: (e) => {
       if (!isClosestCanvasNodeTarget(e.target, e.currentTarget)) return
@@ -334,7 +350,7 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
       }
       e.preventDefault()
       e.stopPropagation()
-      onNodeDoubleClick(nodeId, e as unknown as React.MouseEvent, breakpointId)
+      onNodeDoubleClick(nodeId, e as unknown as React.MouseEvent, breakpointId, paragraphHostAllowed)
     },
     onContextMenuCapture: (e) => {
       if (!isClosestCanvasNodeTarget(e.target, e.currentTarget)) return
@@ -421,6 +437,19 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
   // editor swap to a different module clears any stuck error.
   // silentToast: the canvas-level boundary already toasts; 100 nodes with
   // one bad module would otherwise produce 100 identical toasts per render.
+  const moduleElement = (
+    <ComponentType
+      props={effectiveProps as never}
+      nodeId={nodeId}
+      isSelected={isSelected}
+      mcClassName={mcClassName}
+      nodeWrapperProps={effectiveWrapperProps}
+      inlineEdit={inlineEditBinding}
+    >
+      {isInlineEditing ? undefined : children}
+    </ComponentType>
+  )
+
   return (
     <ErrorBoundary
       location="node-renderer"
@@ -436,17 +465,25 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
           mcClassName={mcClassName}
           classIds={effectiveClassIds}
         />
+      ) : paragraphEditTag !== null && paragraphHostAllowed ? (
+        // Paragraph mode: a bare stand-in element (same tag + classes) that
+        // React owns only from the outside — the child nodes are not rendered,
+        // the TipTap editor mounted inside shows the paragraph's runs instead.
+        // A second host for the same session falls back to the module render.
+        <ParagraphEditHost
+          tag={paragraphEditTag}
+          className={mcClassName}
+          wrapperProps={{
+            ...htmlAttributesForReact(effectiveProps.htmlAttributes),
+            'data-node-id': nodeId,
+            'data-module-id': node.moduleId,
+            ...(isSelected ? { 'data-canvas-selected': 'true' as const } : {}),
+            ...(inlineStyle ? { style: inlineStyle } : {}),
+          }}
+          fallback={moduleElement}
+        />
       ) : (
-        <ComponentType
-          props={effectiveProps as never}
-          nodeId={nodeId}
-          isSelected={isSelected}
-          mcClassName={mcClassName}
-          nodeWrapperProps={effectiveWrapperProps}
-          inlineEdit={inlineEditBinding}
-        >
-          {isInlineEditing ? undefined : children}
-        </ComponentType>
+        moduleElement
       )}
     </ErrorBoundary>
   )
@@ -501,7 +538,10 @@ function LoopIterationsPreview({ node, baseTemplateContext }: LoopIterationsPrev
             key={`${variantId}-${i}-${item.id}`}
             value={augmentedContext}
           >
-            <NodeRenderer nodeId={variantId} />
+            {/* One node, many items: no iteration may host paragraph mode. */}
+            <CanvasParagraphHostContext.Provider value={false}>
+              <NodeRenderer nodeId={variantId} />
+            </CanvasParagraphHostContext.Provider>
           </CanvasTemplateContext.Provider>
         )
       })}

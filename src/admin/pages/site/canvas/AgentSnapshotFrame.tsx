@@ -21,6 +21,7 @@ import {
   CanvasBreakpointContext,
   CanvasDocumentContext,
   CanvasFrameElementContext,
+  CanvasParagraphHostContext,
   CanvasTemplateContext,
 } from './CanvasContexts'
 import { IframeFrameSurface } from './IframeFrameSurface'
@@ -68,7 +69,9 @@ export function AgentSnapshotFrame({
         >
           <CanvasTemplateContext.Provider value={templateContext}>
             <CanvasBreakpointContext.Provider value={breakpoint.id}>
-              <CanvasComposedTree page={page} />
+              <CanvasParagraphHostContext.Provider value={false}>
+                <CanvasComposedTree page={page} />
+              </CanvasParagraphHostContext.Provider>
               {!templateContextLoading ? (
                 <AgentSnapshotReadyMarker
                   requestId={requestId}

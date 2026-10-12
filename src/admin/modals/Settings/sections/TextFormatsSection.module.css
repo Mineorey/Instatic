@@ -1,0 +1,48 @@
+.picker {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.format {
+  display: grid;
+  gap: var(--space-m);
+  padding: var(--space-m);
+  margin-bottom: var(--space-m);
+  background: var(--bg-surface);
+  border-radius: var(--radius);
+}
+
+.error {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--text-s);
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-m);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-s);
+  cursor: pointer;
+}
+
+.help {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-s);
+  color: var(--text-muted);
+}
+
+.claimed {
+  color: var(--text-muted);
+}

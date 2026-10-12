@@ -202,6 +202,8 @@ export function clearCanvasSelectionDraft(state: EditorStore): void {
   // node it points at is no longer on the canvas. Live keystrokes already
   // committed; clearing here is the spec's "force-close without committing".
   state.activeInlineEdit = null
+  // Paragraph mode holds a detached copy — dropping it discards the edit.
+  state.activeParagraphEdit = null
 }
 
 /**
@@ -222,6 +224,9 @@ export function pruneCanvasSelectionDraft(state: EditorStore): void {
   // the selection at all, so this must run before the early return below.
   if (state.activeInlineEdit && !tree?.nodes[state.activeInlineEdit.nodeId]) {
     state.activeInlineEdit = null
+  }
+  if (state.activeParagraphEdit && !tree?.nodes[state.activeParagraphEdit.target.nodeId]) {
+    state.activeParagraphEdit = null
   }
   const surviving = tree
     ? state.selectedNodeIds.filter((id) => Boolean(tree.nodes[id]))

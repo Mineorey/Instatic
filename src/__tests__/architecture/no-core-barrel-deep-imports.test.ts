@@ -12,6 +12,8 @@
  *   - `@core/fonts`
  *   - `@core/collab`
  *   - `@core/registry`
+ *   - `@core/paragraph`
+ *   - `@core/text-formats`
  *
  * Per the barrel convention (CLAUDE.md → "Barrel imports"): everything OUTSIDE
  * a module imports through its barrel; files INSIDE the module import each
@@ -40,6 +42,8 @@ const BARRELLED_MODULES = [
   'fonts',
   'collab',
   'registry',
+  'paragraph',
+  'text-formats',
 ]
 
 // Scan production + test sources in both the app and the server.

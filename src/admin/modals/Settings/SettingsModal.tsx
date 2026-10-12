@@ -26,10 +26,12 @@ import { SettingsCogSolidIcon } from 'pixel-art-icons/icons/settings-cog-solid'
 import { CommandIcon } from 'pixel-art-icons/icons/command'
 import { UploadIcon } from 'pixel-art-icons/icons/upload'
 import { SlidersHorizontalIcon } from 'pixel-art-icons/icons/sliders-horizontal'
+import { BoldIcon } from 'pixel-art-icons/icons/bold'
 import { GeneralSection } from './sections/GeneralSection'
 import { PublishingSection } from './sections/PublishingSection'
 import { ShortcutsSection } from './sections/ShortcutsSection'
 import { PreferencesSection } from './sections/PreferencesSection'
+import { TextFormatsSection } from './sections/TextFormatsSection'
 import s from './SettingsModal.module.css'
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ const NAV_ITEMS = [
   { id: 'shortcuts',   label: 'Shortcuts',   icon: CommandIcon,           accent: 'sky'   },
   { id: 'publishing',  label: 'Publishing',  icon: UploadIcon,            accent: 'mint'  },
   { id: 'preferences', label: 'Preferences', icon: SlidersHorizontalIcon, accent: 'peach' },
+  { id: 'textFormats',  label: 'Text formats', icon: BoldIcon,              accent: 'sky'   },
 ] as const
 
 type SectionId = typeof NAV_ITEMS[number]['id']
@@ -254,6 +257,7 @@ export function SettingsModal() {
               {activeSection === 'shortcuts'   && <ShortcutsSection />}
               {activeSection === 'publishing'  && <PublishingSection />}
               {activeSection === 'preferences' && <PreferencesSection />}
+              {activeSection === 'textFormats' && <TextFormatsSection />}
             </div>
           </div>
         </div>

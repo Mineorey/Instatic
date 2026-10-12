@@ -29,6 +29,7 @@ import type { FontEntry, FontToken } from '@core/fonts'
 import type { ImportFragment } from '@core/htmlImport'
 import type { NewStyleRule, SiteImportTransaction } from '@core/siteImport'
 import type { FrameworkChangeImpact, FrameworkPreset } from '@core/framework'
+import type { ParagraphCommitResult, ParagraphTarget, Run } from '@core/paragraph'
 import type { EditorStore } from '@site/store/types'
 
 // ---------------------------------------------------------------------------
@@ -198,6 +199,16 @@ export interface SiteSlice {
    * - Returns the new node's id on success, or `null` on no-op / cycle prevented.
    */
   insertComponentRef: (parentId: string, componentId: string, index?: number) => string | null
+  /**
+   * Paragraph mode: write the edited runs back into the active tree as ONE
+   * undo step (including a base.text ⇄ container replacement). Refuses with
+   * `conflict` when the paragraph no longer matches `baseline` (changed
+   * concurrently), and reports `unchanged` when the normalized runs equal the
+   * current content — or when the collab write gate refused the write (the
+   * gate already told the user; nothing landed). Never mutates on `conflict`
+   * / `unchanged`.
+   */
+  commitParagraphRuns: (target: ParagraphTarget, runs: Run[], baseline: string) => ParagraphCommitResult
   deleteNode: (nodeId: string) => void
   /** Multi-delete: removes every id and its descendants in one undo step. */
   deleteNodes: (nodeIds: string[]) => void
