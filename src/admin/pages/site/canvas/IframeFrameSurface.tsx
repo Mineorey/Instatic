@@ -89,6 +89,7 @@ import {
   shouldStartCanvasPointerPan,
 } from './canvasPanInput'
 import { useEditorStore } from '@site/store/store'
+import { isCanvasTextEditing } from '@site/store/textEditing'
 import { closestReadonlyRegion, isElementLike } from './readonlyRegion'
 import { CanvasDocumentContext, CanvasFrameElementContext } from './CanvasContexts'
 import styles from './IframeFrameSurface.module.css'
@@ -491,7 +492,7 @@ export const IframeFrameSurface = forwardRef<IframeFrameSurfaceHandle, IframeFra
         // worst is Cmd+Z running the store `undo()` (reverting the whole
         // coalesced session) while the DOM keeps the text — store/DOM diverge.
         // The element's own React onKeyDown still owns Escape/Enter.
-        if (useEditorStore.getState().activeInlineEdit) return
+        if (isCanvasTextEditing(useEditorStore.getState())) return
         if (e.code === 'Space' && !e.repeat) {
           spaceHeld = true
           setCanvasSpacePanActive(parentDocument, 'iframe', true)

@@ -41,11 +41,11 @@ import { create } from 'zustand'
 import { cmsAdapter } from '@core/persistence/cms'
 import { SaveConflictError } from '@core/persistence/saveConflict'
 import { DEFAULT_FRAMEWORK_PREFERENCES } from '@core/framework'
-import type { SiteDocument, SiteSettings } from '@core/page-tree'
+import type { SiteDocument, SiteSettings, StyleRule } from '@core/page-tree'
 import type { FrameworkPreferencesSettings } from '@core/framework-schema'
 import { useEditorStore } from '@site/store/store'
 import { useAdminUi } from '@admin/state/adminUi'
-import { requestCmsSiteReload } from '@admin/state/adminEvents'
+import { CMS_SITE_RELOAD_EVENT, requestCmsSiteReload } from '@admin/state/adminEvents'
 import { getErrorMessage } from '@core/utils/errorMessage'
 
 const SITE_ID = 'default'
@@ -76,7 +76,15 @@ interface SettingsDraftState {
   shellBaseSeq: number
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
-  /** Load the document once (idempotent; shares a single in-flight fetch). */
+  /**
+   * The site was written outside this store (import, plugin install, data
+   * workspace) since `doc` was loaded — the next `ensureLoaded` refetches.
+   */
+  stale: boolean
+  /**
+   * Load the document (idempotent while fresh; shares a single in-flight
+   * fetch). A stale document is refetched once pending saves have settled.
+   */
   ensureLoaded: () => Promise<void>
   updateName: (name: string) => void
   updateSettings: (patch: Partial<SiteSettings>) => void
@@ -87,6 +95,12 @@ let inFlightLoad: Promise<void> | null = null
 // Serialise PUTs so two quick edits (e.g. toggle then blur) can't race to a
 // last-writer-wins on the server out of order.
 let saveChain: Promise<void> = Promise.resolve()
+// True while this store announces its own save — that reload request is for
+// the editor and the site summary, not a reason to refetch our own write.
+let announcingOwnSave = false
+// Bumped by every save. A load whose fetch started before a save must not
+// apply its (older) document and shell seq over that save.
+let saveGeneration = 0
 
 /**
  * Standalone draft store — used only when the editor store is NOT the source
@@ -95,6 +109,7 @@ let saveChain: Promise<void> = Promise.resolve()
  */
 const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
   function persist(next: SiteDocument): void {
+    saveGeneration += 1
     set({ doc: next })
     saveChain = saveChain
       .then(() =>
@@ -113,7 +128,12 @@ const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
           name: next.name,
           faviconUrl: next.settings.faviconUrl ?? null,
         })
-        requestCmsSiteReload()
+        announcingOwnSave = true
+        try {
+          requestCmsSiteReload()
+        } finally {
+          announcingOwnSave = false
+        }
       })
       .catch((err: unknown) => {
         console.error('[useSiteSettingsController] failed to save site settings:', err)
@@ -132,19 +152,44 @@ const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
       })
   }
 
+  // Any other site write (Site import, plugin install, data workspace edits of
+  // site-backed tables) announces itself through `requestCmsSiteReload`. The
+  // cached document is stale from then on — without this, Settings opened
+  // before an import kept showing the pre-import site (its name, settings and
+  // classes) until a full page reload.
+  if (typeof window !== 'undefined') {
+    window.addEventListener(CMS_SITE_RELOAD_EVENT, () => {
+      if (announcingOwnSave) return
+      // Also while the first load is in flight: its response may predate the write.
+      if (get().doc || get().status === 'loading') set({ stale: true })
+    })
+  }
+
   return {
     doc: null,
     shellBaseSeq: 0,
     status: 'idle',
     error: null,
+    stale: false,
 
     ensureLoaded: async () => {
-      if (get().status === 'ready' || get().status === 'loading') return
+      const { status, stale } = get()
+      if (status === 'loading' || (status === 'ready' && !stale)) return
       if (inFlightLoad) return inFlightLoad
-      set({ status: 'loading', error: null })
+      set({ status: 'loading', error: null, stale: false })
       inFlightLoad = (async () => {
         try {
+          // A save still in flight would otherwise land after the fetch and
+          // leave `doc` / `shellBaseSeq` behind the server.
+          await saveChain
+          const generation = saveGeneration
           const result = await cmsAdapter.loadSite(SITE_ID)
+          if (generation !== saveGeneration) {
+            // A save started meanwhile: this response may not contain it, and
+            // its shell seq would rewind the save's conflict base. Fetch again.
+            set({ status: 'ready', stale: true })
+            return
+          }
           if (!result) {
             set({ status: 'error', error: 'No site found. Complete first-run setup first.' })
             return
@@ -156,6 +201,8 @@ const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
         } finally {
           inFlightLoad = null
         }
+        // Marked stale while this load ran (a write it may not include).
+        if (get().stale && get().status === 'ready') await get().ensureLoaded()
       })()
       return inFlightLoad
     },
@@ -202,7 +249,7 @@ const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
 /** Uniform view of the site-level settings consumed by the modal sections. */
 export interface SiteSettingsController {
   /** `null` while loading or on error — sections render a skeleton / alert. */
-  site: { name: string; settings: SiteSettings } | null
+  site: { name: string; settings: SiteSettings; styleRules: Record<string, StyleRule> } | null
   error: string | null
   updateSiteName: (name: string) => void
   updateSiteSettings: (patch: Partial<SiteSettings>) => void
@@ -220,6 +267,7 @@ export function useSiteSettingsController(): SiteSettingsController {
   // Standalone source (every other admin page).
   const draftDoc = useSettingsDraftStore((s) => s.doc)
   const draftError = useSettingsDraftStore((s) => s.error)
+  const draftStale = useSettingsDraftStore((s) => s.stale)
   const ensureLoaded = useSettingsDraftStore((s) => s.ensureLoaded)
   const standaloneUpdateName = useSettingsDraftStore((s) => s.updateName)
   const standaloneUpdateSettings = useSettingsDraftStore((s) => s.updateSettings)
@@ -229,14 +277,16 @@ export function useSiteSettingsController(): SiteSettingsController {
 
   const editorActive = editorSite !== null
 
+  // `draftStale`: an out-of-modal site write while Settings is open reloads
+  // right away; otherwise the next open does.
   useEffect(() => {
     if (editorActive) return
     void ensureLoaded()
-  }, [editorActive, ensureLoaded])
+  }, [editorActive, draftStale, ensureLoaded])
 
   if (editorActive) {
     return {
-      site: { name: editorSite.name, settings: editorSite.settings },
+      site: { name: editorSite.name, settings: editorSite.settings, styleRules: editorSite.styleRules },
       error: null,
       updateSiteName: editorUpdateName,
       updateSiteSettings: editorUpdateSettings,
@@ -245,7 +295,9 @@ export function useSiteSettingsController(): SiteSettingsController {
   }
 
   return {
-    site: draftDoc ? { name: draftDoc.name, settings: draftDoc.settings } : null,
+    site: draftDoc
+      ? { name: draftDoc.name, settings: draftDoc.settings, styleRules: draftDoc.styleRules }
+      : null,
     error: draftError,
     updateSiteName: standaloneUpdateName,
     updateSiteSettings: standaloneUpdateSettings,

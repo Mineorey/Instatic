@@ -22,6 +22,16 @@ export function getViewportLocalPoint(
 }
 
 /**
+ * The canvas zoom applied to a breakpoint iframe. The iframe element is
+ * CSS-scaled by the transform layer while its document keeps its own
+ * unscaled viewport, so `outerRect.width / offsetWidth` recovers the factor
+ * that maps iframe-internal coordinates to editor-document pixels.
+ */
+export function iframeScale(frame: HTMLIFrameElement, frameRect: DOMRect = frame.getBoundingClientRect()): number {
+  return frame.offsetWidth > 0 ? frameRect.width / frame.offsetWidth : 1
+}
+
+/**
  * Translate a pointer event's `clientX` / `clientY` into editor-document
  * coordinates.
  *
@@ -57,10 +67,10 @@ export function clientPointToEditorDoc(event: {
     return { x: event.clientX, y: event.clientY }
   }
   const iframeRect = frame.getBoundingClientRect()
-  const iframeScale = frame.offsetWidth > 0 ? iframeRect.width / frame.offsetWidth : 1
+  const scale = iframeScale(frame, iframeRect)
   return {
-    x: iframeRect.left + event.clientX * iframeScale,
-    y: iframeRect.top + event.clientY * iframeScale,
+    x: iframeRect.left + event.clientX * scale,
+    y: iframeRect.top + event.clientY * scale,
   }
 }
 
@@ -116,8 +126,7 @@ export function measureCanvasDropCandidates(
   // multiply by the canvas zoom recovered from the iframe element before
   // adding the iframe's outer offset. See the matching explanation in
   // `canvasOverlayGeometry.ts`.
-  const iframeScale =
-    iframe && iframe.offsetWidth > 0 && iframeRect ? iframeRect.width / iframe.offsetWidth : 1
+  const frameScale = iframe && iframeRect ? iframeScale(iframe, iframeRect) : 1
   const candidates: CanvasDropCandidate[] = []
 
   for (const target of wrappers) {
@@ -136,12 +145,12 @@ export function measureCanvasDropCandidates(
     // global, ruling out `new DOMRect()`.
     const editorRect: ClientRectLike = iframeRect
       ? {
-          left: iframeRect.left + rectInsideScope.left * iframeScale,
-          top: iframeRect.top + rectInsideScope.top * iframeScale,
-          right: iframeRect.left + rectInsideScope.right * iframeScale,
-          bottom: iframeRect.top + rectInsideScope.bottom * iframeScale,
-          width: rectInsideScope.width * iframeScale,
-          height: rectInsideScope.height * iframeScale,
+          left: iframeRect.left + rectInsideScope.left * frameScale,
+          top: iframeRect.top + rectInsideScope.top * frameScale,
+          right: iframeRect.left + rectInsideScope.right * frameScale,
+          bottom: iframeRect.top + rectInsideScope.bottom * frameScale,
+          width: rectInsideScope.width * frameScale,
+          height: rectInsideScope.height * frameScale,
         }
       : rectInsideScope
 

@@ -196,6 +196,7 @@ export function SpotlightRoot({ children }: { children: ReactNode }) {
           canRedo: s.canRedo,
           activeBreakpointId: s.activeBreakpointId,
           activeInlineEdit: s.activeInlineEdit !== null,
+          activeParagraphEdit: s.activeParagraphEdit !== null,
         }
       }
 
@@ -221,7 +222,8 @@ export function SpotlightRoot({ children }: { children: ReactNode }) {
           next.canUndo === last.canUndo &&
           next.canRedo === last.canRedo &&
           next.activeBreakpointId === last.activeBreakpointId &&
-          next.activeInlineEdit === last.activeInlineEdit
+          next.activeInlineEdit === last.activeInlineEdit &&
+          next.activeParagraphEdit === last.activeParagraphEdit
         ) return
         last = next
         setEditorCtx(next)

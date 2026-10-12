@@ -92,6 +92,7 @@ describe('command shortcut dispatch', () => {
       canRedo: false,
       activeBreakpointId: 'desktop',
       activeInlineEdit: false,
+      activeParagraphEdit: false,
     })
     const fromCanvas = findMatchingShortcutCommand(
       eventLike('c', { metaKey: true, target: canvasTarget() as EventTarget }) as KeyboardEvent,
@@ -115,6 +116,7 @@ describe('command shortcut dispatch', () => {
       canRedo: false,
       activeBreakpointId: 'desktop',
       activeInlineEdit: false,
+      activeParagraphEdit: false,
     })
 
     const command = findMatchingShortcutCommand(
@@ -143,6 +145,7 @@ describe('command shortcut dispatch', () => {
       canRedo: false,
       activeBreakpointId: 'desktop',
       activeInlineEdit: false,
+      activeParagraphEdit: false,
     })
 
     expect(
@@ -174,6 +177,27 @@ describe('command shortcut dispatch', () => {
       canRedo: false,
       activeBreakpointId: 'desktop',
       activeInlineEdit: true,
+      activeParagraphEdit: false,
+    })
+
+    const command = findMatchingShortcutCommand(
+      eventLike('C', { metaKey: true, target: canvasTarget() as EventTarget }) as KeyboardEvent,
+      ctx,
+    )
+
+    expect(command).toBeNull()
+  })
+
+  it('does not run canvas shortcuts during paragraph editing', () => {
+    const ctx = context(['site.read', 'site.structure.edit'], {
+      selectedNodeIds: ['node-1'],
+      activePageId: 'page-1',
+      activeDocument: { kind: 'page', pageId: 'page-1' },
+      canUndo: false,
+      canRedo: false,
+      activeBreakpointId: 'desktop',
+      activeInlineEdit: false,
+      activeParagraphEdit: true,
     })
 
     const command = findMatchingShortcutCommand(

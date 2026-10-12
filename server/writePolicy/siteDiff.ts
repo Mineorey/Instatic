@@ -15,7 +15,7 @@
  *               changing site id / name.
  *   content   — settings.metaTitle / settings.metaDescription (authored text
  *               the "client / copy editor" persona owns).
- *   style     — classes registry contents, settings.framework, settings.fonts,
+ *   style     — classes registry contents, settings.framework, settings.fonts, settings.textFormats,
  *               file contents.
  *
  * Pages are NOT diffed here (managed by /pages endpoint).
@@ -162,6 +162,9 @@ function diffSettings(
   }
   if (!deepEqual(prev.fonts, next.fonts)) {
     requireChange(ctx, 'style', 'settings.fonts', 'fonts library changed')
+  }
+  if (!deepEqual(prev.textFormats, next.textFormats)) {
+    requireChange(ctx, 'style', 'settings.textFormats', 'text formats changed')
   }
 
   // Content fields — site-wide SEO copy that the copy-editor persona owns.

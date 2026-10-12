@@ -203,12 +203,12 @@ describe('SettingsModal — backdrop', () => {
 // ---------------------------------------------------------------------------
 
 describe('SettingsModal — section navigation', () => {
-  it('renders exactly 4 nav items (general, shortcuts, publishing, preferences)', () => {
+  it('renders exactly 5 nav items (general, shortcuts, publishing, preferences, textFormats)', () => {
     openModal()
     render(<SettingsModal />)
     const nav = screen.getByRole('navigation', { name: /settings sections/i })
     const navBtns = Array.from(nav.querySelectorAll('button'))
-    expect(navBtns.length).toBe(4)
+    expect(navBtns.length).toBe(5)
   })
 
   it('renders nav items with the current section labels', () => {
@@ -221,6 +221,7 @@ describe('SettingsModal — section navigation', () => {
     expect(within(nav).getByText('Shortcuts')).toBeDefined()
     expect(within(nav).getByText('Publishing')).toBeDefined()
     expect(within(nav).getByText('Preferences')).toBeDefined()
+    expect(within(nav).getByText('Text formats')).toBeDefined()
     // Dropped sections — moved to their dedicated controls.
     expect(within(nav).queryByText('Pages')).toBeNull()
     expect(within(nav).queryByText('Viewports')).toBeNull()

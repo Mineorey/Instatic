@@ -1,0 +1,110 @@
+/* Paragraph-mode formatting menu + link panel — same surface tokens as the
+ * content editor's BodyBubbleMenu. */
+
+/* TipTap's floating menu element (portaled into the editor body). Lifted
+ * above canvas chrome and sidebars (55), below dialogs (95+); select menus
+ * (10000) still open above it. */
+.floating {
+    z-index: 90;
+}
+
+.menu {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4xs);
+    padding: var(--space-3xs);
+    border-radius: var(--panel-radius);
+    border: 1px solid var(--border);
+    background: var(--bg-body);
+    box-shadow: 0 12px 32px -16px var(--scrim-50);
+    white-space: nowrap;
+}
+
+.divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 var(--space-3xs);
+    background: var(--border);
+}
+
+/* Square icon button — same 28×28 footprint as BodyBubbleMenu's mark toggles. */
+.markButton {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    flex-shrink: 0;
+    aspect-ratio: 1 / 1;
+}
+
+/* Link panel: fixed below the selection; the anchor comes in as custom
+ * properties set from the selection rect. */
+.linkPanel {
+    --panel-left: 0px;
+    --panel-top: 0px;
+    position: fixed;
+    left: var(--panel-left);
+    top: var(--panel-top);
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    width: 300px;
+    padding: var(--space-s);
+    border-radius: var(--panel-radius);
+    border: 1px solid var(--border);
+    background: var(--bg-body);
+    box-shadow: 0 12px 32px -16px var(--scrim-50);
+}
+
+/* "Links to https://…" under the URL field when https:// is added. */
+.hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+}
+
+.checkboxRow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    color: var(--text);
+    font-size: var(--text-s);
+    cursor: pointer;
+}
+
+/* "Unsaved link change" — shown instead of the action row when a press
+ * outside hit a changed draft. */
+.unsaved {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+    padding: var(--space-xs);
+    border-radius: var(--radius);
+    background: var(--warning-10);
+    color: var(--warning-text);
+    font-size: var(--text-s);
+}
+
+.unsavedTitle,
+.unsavedHint {
+    margin: 0;
+}
+
+.unsavedTitle {
+    font-weight: 600;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3xs);
+}
+
+/* Focused programmatically on open (Ctrl+K) so Escape lands here; the
+ * container itself needs no ring — its controls keep theirs. */
+.linkPanel:focus {
+    outline: none;
+}

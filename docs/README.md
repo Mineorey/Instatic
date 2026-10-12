@@ -42,7 +42,8 @@ docs/
 │   ├── site-import.md              ← Super Import (static sites → CMS)
 │   ├── html-import.md              ← paste / import HTML into the page tree
 │   ├── editor-preferences.md       ← catalog-driven editor prefs
-│   └── canvas-iframe-per-frame.md  ← per-breakpoint iframe rendering
+│   ├── canvas-iframe-per-frame.md  ← per-breakpoint iframe rendering
+│   └── paragraph-editing.md        ← paragraph mode: rich text on canvas, text formats
 │
 ├── reference/                  ← short cookbook pages for primitives + patterns
 │   ├── page-tree.md                ← NodeTree<TNode> primitive
@@ -162,6 +163,7 @@ Three categories, three voices:
 | [features/html-import.md](features/html-import.md)               | HTML string → `PageNode` fragment (paste HTML, AI `insertHtml` tool) |
 | [features/editor-preferences.md](features/editor-preferences.md) | Catalog-driven local UI preferences for the editor                   |
 | [features/canvas-iframe-per-frame.md](features/canvas-iframe-per-frame.md) | Per-breakpoint iframe rendering in the visual editor canvas |
+| [features/paragraph-editing.md](features/paragraph-editing.md) | Paragraph mode: rich-text editing on the canvas, text formats setting |
 
 ### Reference
 

@@ -12,7 +12,7 @@ The frontend is a single React 19 + Vite SPA mounted at `/admin`. Inside it, two
 - **Router:** `src/admin/lib/routing/` — in-house router replacing `react-router-dom`. Ten workspace/page routes are wrapped in a per-route `<ErrorBoundary>` and `<Suspense>`, with root redirects plus a final `path="/admin/*"` catch-all redirecting unknown admin URLs to `/admin/dashboard` (login form when unauthenticated) instead of rendering an empty tree. Public-site 404s are NOT claimed — the publish pipeline's NotFound handling owns those.
 - **Cold path:** entry chunk is tiny. `AuthenticatedAdmin` is `React.lazy` and only loads post-login. Each workspace page is wrapped in `prewarmedLazy(...)`: the active page fires its import at module evaluation; the remaining pages pre-warm via `requestIdleCallback` after first paint so subsequent nav is synchronous (no Suspense flicker).
 - **Workspaces:** `dashboard`, `site` (the editor), `content`, `data`, `media`, `plugins`, `users`, `ai`, `account`, `pluginPage`. Capability-gated by `canAccessWorkspace`.
-- **Editor store** lives at `src/admin/pages/site/store/`. Zustand + Mutative (`zustand-mutative`) + `subscribeWithSelector`. 12 slices, one source of truth for the page tree. Undo/redo uses patch-based history (O(change) per step, not O(site)).
+- **Editor store** lives at `src/admin/pages/site/store/`. Zustand + Mutative (`zustand-mutative`) + `subscribeWithSelector`. 14 slices, one source of truth for the page tree. Undo/redo uses patch-based history (O(change) per step, not O(site)).
 - **Active tree routing:** `mutateActiveTree(fn)` in `src/admin/pages/site/store/slices/site/helpers.ts` is the **only** place that branches on page-mode vs. VC-mode. The 11 named mutation actions are one-liners that delegate to it.
 - **Canvas:** `src/admin/pages/site/canvas/` renders the page tree into per-breakpoint `IframeFrameSurface` iframes. Two views: **design** (multiple breakpoints side-by-side with pan/zoom) and **live** (single real-size editable frame with normal scrolling). Design mode paints iframe shells with detailed skeletons first, mounts the active breakpoint's node tree after the first paint, then fills inactive breakpoint frames on idle time. Three canvas ring tokens: `--canvas-selection-ring` (neon green, selected node), `--canvas-hover-ring` (neon pink, hovered node), `--canvas-selector-ring` (neon orange, selector-panel match sweep).
 - **Spotlight:** Cmd+K palette at `src/admin/spotlight/`. Always available across workspaces. Owns its own command registry, providers, and scopes.
@@ -258,7 +258,7 @@ src/admin/
 The editor is a self-contained app inside the admin shell. It owns:
 
 - A canvas that renders the page tree into per-breakpoint iframes.
-- A heavy Zustand store with 12 slices.
+- A heavy Zustand store with 14 slices.
 - Left and right sidebars with collapsible panels.
 - A toolbar with publish / save / zoom / the module inserter.
 - Property controls bound to selected nodes.
@@ -329,7 +329,7 @@ Organization is persisted in `site.explorer` on the site shell. Folders are deco
 
 **Undo/redo** uses patch-based history: every undoable mutation captures Mutative `[next, forward, inverse]` patch pairs scoped to the `SiteDocument`. Undo applies `entry.inverse`, redo applies `entry.forward` — O(change) in both time and memory, not O(site). A 50-deep history holds kilobytes of patches instead of hundreds of megabytes of full-site clones. See [`docs/reference/editor-history.md`](reference/editor-history.md).
 
-The store is composed of **12 slices**, each created by a factory in `store/slices/`:
+The store is composed of **14 slices**, each created by a factory in `store/slices/`:
 
 | Slice                  | Owns                                                                       |
 |------------------------|----------------------------------------------------------------------------|
@@ -345,6 +345,8 @@ The store is composed of **12 slices**, each created by a factory in `store/slic
 | `sitePanelSlice`       | Dependency manifest + site runtime settings                                |
 | `clipboardSlice`       | Copy / cut / paste of layer subtrees, persisted editor-wide                |
 | `inlineEditSlice`      | `activeInlineEdit` — the canvas inline text-edit session (double-click to edit) |
+| `paragraphEditSlice`   | `activeParagraphEdit` — the paragraph-mode session (rich-text edit of a whole paragraph; commits once via `commitParagraphRuns` as one undo step, refuses on concurrent change) |
+| `layoutsSlice`         | Save / insert / rename / delete of user-saved layouts (`site.layouts`)      |
 
 The combined `EditorStore` type lives at `store/types.ts` so each slice can import it without going through `store.ts` (this eliminates the historical store ↔ slice cycles).
 
@@ -417,7 +419,7 @@ Each tick is split into a read phase and a write phase to keep the loop cheap at
 
 ### Inline text editing (double-click)
 
-Double-clicking a node whose module declares `inlineTextEdit` (`base.text`, `base.button`, childless `base.link`) edits the text **in place**: the node's own element inside the breakpoint iframe becomes the editor. `NodeRenderer` builds an `InlineEditBinding` and the module spreads `inlineEditableElementProps(binding)` onto its real root element, making it `contentEditable="plaintext-only"` (seeded once via `dangerouslySetInnerHTML` from the escaped initial value, with `\n` → `<br>`). There is no overlay and no typography mirroring — the author edits the actual published element, so the editing surface is byte-identical to what publishes. Every keystroke reads the text back with `readInlineEditableText(el)` (`el.innerText`) and commits live through `updateNodeProps`, so all breakpoint frames preview the edit; the burst coalesces into one undo entry. For single-line modules Enter commits + closes; for multiline `base.text`, Enter inserts a hard break (stored as `\n`, rendered as `<br>` everywhere) and Cmd/Ctrl+Enter commits. Blur commits + closes; Escape reverts via a single `undo()`. Canvas shortcuts (Delete/Cmd+D) are suppressed mid-edit by the `activeInlineEdit` guard in `useCanvasKeyboardShortcuts`. Session state is `activeInlineEdit` in `inlineEditSlice`. Full design: [`docs/features/canvas-iframe-per-frame.md`](features/canvas-iframe-per-frame.md) → "Inline text editing (in-place `contentEditable`)".
+Double-clicking a node whose module declares `inlineTextEdit` (`base.text`, `base.button`, childless `base.link`) edits the text **in place**: the node's own element inside the breakpoint iframe becomes the editor. `NodeRenderer` builds an `InlineEditBinding` and the module spreads `inlineEditableElementProps(binding)` onto its real root element, making it `contentEditable="plaintext-only"` (seeded once via `dangerouslySetInnerHTML` from the escaped initial value, with `\n` → `<br>`). There is no overlay and no typography mirroring — the author edits the actual published element, so the editing surface is byte-identical to what publishes. Every keystroke reads the text back with `readInlineEditableText(el)` (`el.innerText`) and commits live through `updateNodeProps`, so all breakpoint frames preview the edit; the burst coalesces into one undo entry. For single-line modules Enter commits + closes; for multiline `base.text`, Enter inserts a hard break (stored as `\n`, rendered as `<br>` everywhere) and Cmd/Ctrl+Enter commits. Blur commits + closes; Escape reverts via a single `undo()`. Canvas shortcuts (Delete/Cmd+D) are suppressed mid-edit by the `isCanvasTextEditing(state)` guard (`store/textEditing.ts`, covers inline edit and paragraph mode) in `useCanvasKeyboardShortcuts`. A double-click first tries paragraph mode (`startParagraphEdit`, rich text with a formatting menu — see "Paragraph mode" in the canvas doc) and falls back to this plain inline edit. Session state is `activeInlineEdit` in `inlineEditSlice`. Full design: [`docs/features/canvas-iframe-per-frame.md`](features/canvas-iframe-per-frame.md) → "Inline text editing (in-place `contentEditable`)".
 
 ### CSS injection into the iframe
 
@@ -605,7 +607,7 @@ The sidebar shell expands/collapses by animating `--*-panel-width`. The panel sl
 
 `src/admin/modals/Settings/SettingsModal.tsx`. Shares the visual language of the Spotlight palette and Module Inserter: a direct-token panel shell, `--bg-surface-2` rail with categorical accent icon chips, accent-bar section header, card-group rows (`--bg-surface-2` fills, `--panel-radius` corners, 1px gaps showing the darker panel surface through) for section content, and an Esc keycap affordance. Backdrop click and Esc both close — there is no dedicated close button.
 
-**Sections** (rail nav, four entries):
+**Sections** (rail nav, five entries):
 
 | Section       | What it contains                                                             |
 |---------------|------------------------------------------------------------------------------|
@@ -613,6 +615,7 @@ The sidebar shell expands/collapses by animating `--*-panel-width`. The panel sl
 | Shortcuts     | Auto-rendered keyboard shortcut reference from the keybindings registry       |
 | Publishing    | Self-hosted runtime info + framework CSS tree-shaking toggle                 |
 | Preferences   | Catalog-driven editor preferences (auto-rendered from `PREFERENCE_CATALOG`)  |
+| Text formats  | Tag + classes per inline format (bold, italic, link) used by paragraph mode, see [paragraph-editing.md](features/paragraph-editing.md) |
 
 Site-specific controls that were previously sections of this modal (Pages roster, Breakpoints/Viewports, Conditions) now live in their dedicated surfaces: the Site Explorer panel and `CanvasContextSelector` (unified condition axis).
 
@@ -621,7 +624,7 @@ Site-specific controls that were previously sections of this modal (Pages roster
 **Data source — `useSiteSettingsController`** (`src/admin/modals/Settings/useSiteSettingsController.ts`): the General and Publishing sections edit fields of the persisted `SiteDocument` (`name`, `settings.*`, framework preferences), but where that document lives depends on the route. The modal is global, so a section cannot just read the editor store — that store is only hydrated on the Site editor (`AdminCanvasLayout`). The controller hides the split behind one uniform shape:
 
 - **Site editor** (editor store holds the live document): delegate to the editor-store mutations. Settings edits ride the collab write path alongside page-tree edits — streamed live to every peer and persisted by the server relay.
-- **Every other admin page** (no in-memory draft): a standalone Zustand store loads the document once via `cmsAdapter`, edits a local copy, and persists immediately with a shell-only `saveSite` (empty dirty sets, so pages / components / layouts are left untouched). After each save it refreshes the `adminUi` site summary and fires `CMS_SITE_RELOAD_EVENT` so the toolbar brand and `useSiteSummary` re-sync. There is no Save button on those pages, so writes commit on blur / toggle.
+- **Every other admin page** (no in-memory draft): a standalone Zustand store loads the document once via `cmsAdapter`, edits a local copy, and persists immediately with a shell-only `saveSite` (empty dirty sets, so pages / components / layouts are left untouched). After each save it refreshes the `adminUi` site summary and fires `CMS_SITE_RELOAD_EVENT` so the toolbar brand and `useSiteSummary` re-sync. There is no Save button on those pages, so writes commit on blur / toggle. The loaded copy is not kept forever: any **other** `CMS_SITE_RELOAD_EVENT` (site import, plugin install, data-workspace writes to site tables — also one arriving while the first load is in flight) marks it `stale`, and the next render of a section refetches it after pending saves have settled (immediately when the modal is open). A load whose fetch started before a save discards its response and fetches again, so it can never roll back that save or its shell conflict base (`saveGeneration`).
 
 Because the controller is imported only by the lazy section components, the editor-store import it carries stays inside the `SettingsModal` chunk and never enters the eager graph of the lightweight layouts. This is what makes the modal *actually* global — before it, General and Publishing rendered a permanent skeleton anywhere outside the Site editor.
 
@@ -741,7 +744,7 @@ See [docs/features/plugin-system.md](features/plugin-system.md) for the plugin S
   - `src/admin/state/useWorkspaceLayoutPersistence.ts` — non-site workspace layout persistence hook
   - `src/admin/shared/OpenLivePageButton/OpenLivePageButton.tsx` — toolbar "Open live page" icon button
   - `src/admin/pages/site/hooks/useActiveLivePath.ts` — resolves `activeLivePath` for the Site editor (including template → previewed page/post mapping)
-  - `src/admin/modals/Settings/SettingsModal.tsx` — settings modal (4 sections: General, Shortcuts, Publishing, Preferences)
+  - `src/admin/modals/Settings/SettingsModal.tsx` — settings modal (5 sections: General, Shortcuts, Publishing, Preferences, Text formats)
   - `src/admin/modals/Settings/useSiteSettingsController.ts` — uniform site-settings source for General/Publishing (editor draft on the Site editor, `cmsAdapter` everywhere else)
   - `src/admin/pages/site/store/slices/settingsSlice.ts` — settings modal state + adminUi bridge
   - `src/admin/state/useSiteSummary.ts` — lightweight site name/favicon fetch for non-editor layouts

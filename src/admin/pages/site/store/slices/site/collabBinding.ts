@@ -656,11 +656,10 @@ export function connectCollabProvider(next: CollabProvider): void {
     }
     collabResetToast(reason)
     const current = storeApi?.getState()
-    if (
-      current?.activeInlineEdit &&
-      resetTargetsActiveDocument(docId, current.activeDocument, current.activePageId)
-    ) {
-      current.endInlineEdit()
+    if (current && resetTargetsActiveDocument(docId, current.activeDocument, current.activePageId)) {
+      if (current.activeInlineEdit) current.endInlineEdit()
+      // Paragraph mode's baseline belongs to the dead lineage — drop the session.
+      current.cancelParagraphEdit()
     }
     // The undo history belongs to the lineage that just died: its
     // UndoManager is rebuilt empty below, so any routing entry still naming

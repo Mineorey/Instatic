@@ -127,6 +127,7 @@ interface CommandContext {
     canRedo:               boolean
     activeBreakpointId:    string
     activeInlineEdit:      boolean
+    activeParagraphEdit:   boolean  // canvas shortcuts stand down while either is set (isCanvasTextEditing)
   }
 }
 

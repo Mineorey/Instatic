@@ -40,7 +40,7 @@ const EditorPresenceSchema = Type.Object({
   }),
   docId: Type.Union([Type.String(), Type.Null()]),
   selectedNodeIds: Type.Array(Type.String()),
-  /** Node id of an active inline text-edit session, or null. */
+  /** Node id of an active inline text-edit or paragraph-mode session, or null. */
   editingNodeId: Type.Union([Type.String(), Type.Null()]),
   pointer: Type.Union([PointerSchema, Type.Null()]),
   /** Caret/selection inside the edited node's Y.Text (base64 relative
@@ -113,7 +113,7 @@ export function usePublishEditorPresence(
         user: identity,
         docId: activeEditorDocId(s),
         selectedNodeIds: s.selectedNodeIds,
-        editingNodeId: s.activeInlineEdit?.nodeId ?? null,
+        editingNodeId: s.activeInlineEdit?.nodeId ?? s.activeParagraphEdit?.target.nodeId ?? null,
         pointer: previous?.pointer ?? null,
         // The caret field is OWNED by the per-frame capture
         // (publishLocalTextCaret); preserve it during a session, force-clear
@@ -125,7 +125,9 @@ export function usePublishEditorPresence(
     publish()
     const offProvider = onCollabProviderChange(publish)
     const unsubscribe = useEditorStore.subscribe(
-      (s) => `${activeEditorDocId(s)}|${s.selectedNodeIds.join(',')}|${s.activeInlineEdit?.nodeId ?? ''}`,
+      (s) =>
+        `${activeEditorDocId(s)}|${s.selectedNodeIds.join(',')}|${s.activeInlineEdit?.nodeId ?? ''}|` +
+        `${s.activeParagraphEdit?.target.nodeId ?? ''}`,
       publish,
     )
     return () => {

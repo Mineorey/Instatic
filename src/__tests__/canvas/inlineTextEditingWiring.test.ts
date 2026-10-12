@@ -9,7 +9,7 @@
  *   - double-click → startInlineEdit, gated to design mode (CanvasRoot);
  *   - NodeRenderer builds an `InlineEditBinding`, passes `inlineEdit` to the
  *     component, and focuses the element via `useLayoutEffect`;
- *   - the canvas keyboard handler bails on `activeInlineEdit` so Delete/Cmd+D
+ *   - the canvas keyboard handler bails via `isCanvasTextEditing` so Delete/Cmd+D
  *     never fire mid-edit;
  *   - BreakpointFrame no longer mounts an inline-edit overlay (the node itself
  *     is the editor now).
@@ -33,7 +33,7 @@ describe('inline text editing wiring (in-place contentEditable)', () => {
 
   it('the double-click context channel carries the originating breakpoint', () => {
     const src = readFileSync(CONTEXTS, 'utf-8')
-    expect(src).toContain('onNodeDoubleClick: (nodeId: string, e: MouseEvent, breakpointId?: string) => void')
+    expect(src).toContain('onNodeDoubleClick: (nodeId: string, e: MouseEvent, breakpointId?: string, paragraphHostAllowed?: boolean) => void')
   })
 
   it('NodeRenderer builds an InlineEditBinding for the edited node in the session frame', () => {
@@ -70,7 +70,7 @@ describe('inline text editing wiring (in-place contentEditable)', () => {
 
   it('the canvas keyboard handler bails while an inline edit is active', () => {
     const src = readFileSync(KEYBOARD_SHORTCUTS, 'utf-8')
-    expect(src).toContain('if (useEditorStore.getState().activeInlineEdit) return')
+    expect(src).toContain('if (isCanvasTextEditing(useEditorStore.getState())) return')
   })
 
   it('the iframe key-forwarding stands down while an inline edit is active', () => {
@@ -81,7 +81,7 @@ describe('inline text editing wiring (in-place contentEditable)', () => {
     // while the DOM keeps the text. The forward layer must bail during a session
     // so the spacebar types a space and Cmd+Z is the element's own text undo.
     const src = readFileSync(IFRAME_FRAME_SURFACE, 'utf-8')
-    expect(src).toContain('if (useEditorStore.getState().activeInlineEdit) return')
+    expect(src).toContain('if (isCanvasTextEditing(useEditorStore.getState())) return')
   })
 
   it('BreakpointFrame no longer mounts an inline-edit overlay', () => {

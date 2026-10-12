@@ -13,6 +13,7 @@
  */
 
 import { useEditorStore } from '@site/store/store'
+import { isCanvasTextEditing } from '@site/store/textEditing'
 import type { ActiveDocument } from '@site/store/slices/uiSlice'
 import { getKeybindingForCommand } from '@admin/spotlight/keybindings'
 
@@ -151,7 +152,7 @@ export function useCanvasKeyboardShortcuts(
     // a cross-realm iframe element, so suppress ALL canvas shortcuts up front —
     // Delete/Cmd+D/copy/paste must never fire mid-edit. The editing element's
     // own onKeyDown handles Escape (cancel) and Enter (commit).
-    if (useEditorStore.getState().activeInlineEdit) return
+    if (isCanvasTextEditing(useEditorStore.getState())) return
 
     // Zoom / pan keys always run, regardless of selection state.
     canvasKeyDown(event)
