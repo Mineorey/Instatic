@@ -105,9 +105,10 @@ let saveGeneration = 0
 /**
  * Standalone draft store — used only when the editor store is NOT the source
  * of truth (any admin page other than the Site editor). Holds the full
- * SiteDocument so shell saves can reuse it without re-fetching.
+ * SiteDocument so shell saves can reuse it without re-fetching. Exported only
+ * so the test preload can reset it between tests (`storeIsolation.ts`).
  */
-const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
+export const useSettingsDraftStore = create<SettingsDraftState>((set, get) => {
   function persist(next: SiteDocument): void {
     saveGeneration += 1
     set({ doc: next })
