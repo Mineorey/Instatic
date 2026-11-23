@@ -75,7 +75,7 @@ export function createParagraphPreview(doc: Document, spec: ParagraphRenderSpec)
 const STYLE_ID = 'instatic-paragraph-editor-style'
 
 /**
- * Injected into the canvas iframe. `--canvas-selection-ring-color` is
+ * Injected into the canvas iframe. `--chrome-canvas-selection-ring-color` is
  * forwarded onto the iframe :root by EditorChromeInjector (CHROME_TOKENS).
  */
 export function injectParagraphEditorStyles(doc: Document): void {
@@ -83,7 +83,7 @@ export function injectParagraphEditorStyles(doc: Document): void {
   const style = doc.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-[data-paragraph-host] { outline: 2px solid var(--canvas-selection-ring-color); outline-offset: 3px; border-radius: 2px; }
+[data-paragraph-host] { outline: 2px solid var(--chrome-canvas-selection-ring-color); outline-offset: 3px; border-radius: 2px; }
 [data-paragraph-editor] { outline: none; }
 [data-paragraph-editor], [data-paragraph-preview] { white-space: pre-wrap; word-wrap: break-word; }
 [data-paragraph-editor] a[data-paragraph-link], [data-paragraph-preview] a { cursor: text; }

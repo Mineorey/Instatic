@@ -27,7 +27,7 @@ import { attachInlineEditRemoteMerge } from '@site/collab/inlineEditRemoteMerge'
 import { collabDocFor } from '@site/store/slices/site/collabBinding'
 import { useEditorStore, selectActiveCanvasPage } from '@site/store/store'
 import { resolveProps } from '@core/page-tree'
-import { htmlAttributesForReact } from '@core/htmlAttributes'
+import { normalizeHtmlAttributes } from '@core/htmlAttributes'
 import { registry } from '@core/module-engine'
 import type { NodeWrapperProps as NodeWrapperPropsType } from '@core/module-engine'
 import { resolveDynamicProps, effectiveNodeBindings, type TemplateRenderDataContext } from '@core/templates/dynamicBindings'
@@ -49,7 +49,8 @@ import {
 import { useResponsiveBackgroundStyle } from '@admin/pages/media/hooks/useResponsiveBackgroundStyle'
 import { getCanvasNodeClassIds, getCanvasNodeClassName } from './canvasNodeClassName'
 import { findEnclosingComponentRef, type AnnotatedPageNode } from './canvasSelectionUtils'
-import { useLoopPreviewItems } from './useLoopPreviewItems'
+import { useLoopPreviewItems, useLoopPreviewNotice } from './useLoopPreviewItems'
+import { LoopPreviewNotice } from './LoopPreviewNotice'
 import { ParagraphEditHost } from './paragraph/ParagraphEditHost'
 import styles from './NodeRenderer.module.css'
 
@@ -233,7 +234,8 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
     })
   }, [isInlineEditing, inlineEditInitialValue, nodeId])
 
-  const inlineStyle = useResponsiveBackgroundStyle(node?.inlineStyles)
+  const previewStyles = useEditorStore((s) => s.previewInlineStyles?.nodeId === nodeId ? s.previewInlineStyles.styles : null)
+  const inlineStyle = useResponsiveBackgroundStyle(previewStyles ? { ...node?.inlineStyles, ...previewStyles } : node?.inlineStyles)
 
   if (!node) return null
   if (node.hidden) return null
@@ -474,7 +476,7 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
           tag={paragraphEditTag}
           className={mcClassName}
           wrapperProps={{
-            ...htmlAttributesForReact(effectiveProps.htmlAttributes),
+            ...normalizeHtmlAttributes(effectiveProps.htmlAttributes),
             'data-node-id': nodeId,
             'data-module-id': node.moduleId,
             ...(isSelected ? { 'data-canvas-selected': 'true' as const } : {}),
@@ -514,11 +516,14 @@ interface LoopIterationsPreviewProps {
  *
  * Empty result (source not picked yet, no rows, fetch in flight) renders
  * nothing — same as the publisher's empty-loop behaviour. Once data
- * arrives the component re-renders with real iterations.
+ * arrives the component re-renders with real iterations. The exception is
+ * an empty loop the author must be told about (`useLoopPreviewNotice`): an
+ * unavailable source, or a plugin preview that is loading or failed.
  */
 function LoopIterationsPreview({ node, baseTemplateContext }: LoopIterationsPreviewProps) {
   const items = useLoopPreviewItems(node, baseTemplateContext)
-  if (items.length === 0) return null
+  const notice = useLoopPreviewNotice(node.props)
+  if (items.length === 0) return notice ? <LoopPreviewNotice notice={notice} /> : null
 
   const baseStack = baseTemplateContext?.entryStack ?? []
   return (

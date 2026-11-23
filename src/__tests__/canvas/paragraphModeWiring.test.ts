@@ -15,7 +15,7 @@ const read = (p: string) => readFileSync(new URL(`../../admin/${p}`, import.meta
 describe('paragraph mode wiring', () => {
   it('double-click goes through the paragraph-or-inline entry with the render path host flag', () => {
     expect(read('pages/site/canvas/CanvasRoot.tsx')).toContain(
-      'startParagraphOrInlineEdit(nodeId, bp, { x: e.clientX, y: e.clientY }, paragraphHostAllowed)',
+      'startParagraphOrInlineEdit(nodeId, breakpointId ?? activeBreakpointId, { x: e.clientX, y: e.clientY }, paragraphHostAllowed)',
     )
     const nodeRenderer = read('pages/site/canvas/NodeRenderer.tsx')
     expect(nodeRenderer.match(/onNodeDoubleClick\(nodeId, e as unknown as React\.MouseEvent, breakpointId, paragraphHostAllowed\)/g)).toHaveLength(2)
@@ -69,8 +69,11 @@ describe('paragraph mode wiring', () => {
     expect(loader).toContain("import('./paragraphEditor')")
     expect(loader).not.toMatch(/^import\s+(?!type\b)[^'"]*?from\s+'\.\/(paragraphEditor|ParagraphBubbleMenu)'/m)
     const canvasRoot = read('pages/site/canvas/CanvasRoot.tsx')
-    expect(canvasRoot).toContain("import { ParagraphBubbleMenu, preloadParagraphMode } from './paragraph/paragraphModeLoader'")
-    expect(canvasRoot).toContain('requestIdleCallback(preloadParagraphMode')
+    expect(canvasRoot).toContain("import { ParagraphModeLayer } from './paragraph/ParagraphModeLayer'")
+    expect(canvasRoot).toContain('<ParagraphModeLayer enabled={!isLive && editable && permissions.canEditContent} />')
+    const layer = read('pages/site/canvas/paragraph/ParagraphModeLayer.tsx')
+    expect(layer).toContain("import { ParagraphBubbleMenu, preloadParagraphMode } from './paragraphModeLoader'")
+    expect(layer).toContain('requestIdleCallback(preloadParagraphMode')
     const host = read('pages/site/canvas/paragraph/ParagraphEditHost.tsx')
     expect(host).not.toMatch(/from '\.\/paragraphEditor'/)
     expect(host).toContain('createParagraphPreview(el.ownerDocument, spec)')

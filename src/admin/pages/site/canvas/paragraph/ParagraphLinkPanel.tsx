@@ -83,8 +83,8 @@ export function ParagraphLinkPanel({ editor, anchor, focusPanel, formats, onClos
   const trimmedUrl = url.trim()
   // What a typed URL is stored as: `www.example.com` → `https://www.example.com`.
   const urlHref = normalizeLinkInput(url)
-  // Keep the original #fragment while the same page stays selected.
-  const pageFragment = initialRef && initialRef.pageId === pageId ? initialRef.fragment : ''
+  // Keep the original ?query/#fragment while the same page stays selected.
+  const pageFragment = initialRef && initialRef.pageId === pageId ? initialRef.suffix : ''
   const href = mode === 'page' ? (pageId ? makePageRef(pageId, pageFragment) : '') : urlHref
   const valid = href !== '' && isAllowedLinkHref(href)
   const effectiveNewTab = newTabTouched ? newTab : mode === 'url' && isExternalHref(urlHref)

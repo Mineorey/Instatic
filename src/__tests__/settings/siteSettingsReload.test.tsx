@@ -3,36 +3,34 @@
  * the Site editor) caches the loaded site document. A site write made outside
  * the Settings modal — an import, a plugin install — announces itself with
  * `requestCmsSiteReload()`; the next Settings render must show that document,
- * not the one cached before (acceptance finding A: the Text formats class
- * picker stayed empty after a site import).
+ * not the one cached before.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { TextFormatsSection } from '@admin/modals/Settings/sections/TextFormatsSection'
+import { useSiteSettingsController } from '@admin/modals/Settings/useSiteSettingsController'
+import { GeneralSection } from '@admin/modals/Settings/sections/GeneralSection'
 import { requestCmsSiteReload } from '@admin/state/adminEvents'
 import { cmsAdapter } from '@core/persistence/cms'
-import { classKindSelector, type SiteDocument, type StyleRule } from '@core/page-tree'
+import type { SiteDocument } from '@core/page-tree'
 import { useEditorStore } from '@site/store/store'
 import { makeSite } from '../fixtures'
 
-function classRule(id: string, name: string): StyleRule {
-  return {
-    id,
-    name,
-    kind: 'class',
-    selector: classKindSelector(name),
-    order: 0,
-    styles: {},
-    contextStyles: {},
-    createdAt: 0,
-    updatedAt: 0,
-  }
+/** Minimal Settings section: shows the site name and renames it on click. */
+function SiteNameProbe() {
+  const { site, updateSiteName } = useSiteSettingsController()
+  if (!site) return <p>loading</p>
+  return (
+    <div>
+      <p data-testid="site-name">{site.name}</p>
+      <button type="button" onClick={() => updateSiteName(`${site.name}+`)}>
+        Rename
+      </button>
+    </div>
+  )
 }
 
-const before: SiteDocument = makeSite({ styleRules: { a: classRule('a', 'before-class') } })
-const after: SiteDocument = makeSite({
-  styleRules: { a: classRule('a', 'imported-one'), b: classRule('b', 'imported-two') },
-})
+const before: SiteDocument = makeSite({ name: 'Before import' })
+const after: SiteDocument = makeSite({ name: 'Imported site' })
 
 let served: SiteDocument = before
 let loads = 0
@@ -58,42 +56,38 @@ afterEach(() => {
   cmsAdapter.saveSite = originalSave
 })
 
-async function boldClassOptions(): Promise<string[]> {
-  const combobox = await screen.findByRole('combobox', { name: /classes for bold/i })
-  fireEvent.click(combobox.nextElementSibling as HTMLElement)
-  const names = screen.getAllByRole('option').map((o) => o.textContent ?? '').filter((n) => n !== 'Add class…')
-  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
-  return names
+async function shownName(): Promise<string> {
+  return (await screen.findByTestId('site-name')).textContent ?? ''
 }
 
 describe('Settings outside the Site editor after an out-of-modal site write', () => {
-  it('shows the imported classes, not the document cached before the import', async () => {
-    const first = render(<TextFormatsSection />)
-    expect(await boldClassOptions()).toEqual(['before-class'])
+  it('shows the imported document, not the one cached before the import', async () => {
+    const first = render(<SiteNameProbe />)
+    expect(await shownName()).toBe('Before import')
     first.unmount()
 
     // Site import (Replace) finished on the Data page.
     served = after
     requestCmsSiteReload()
 
-    render(<TextFormatsSection />)
-    await waitFor(async () => expect(await boldClassOptions()).toEqual(['imported-one', 'imported-two']))
+    render(<SiteNameProbe />)
+    await waitFor(async () => expect(await shownName()).toBe('Imported site'))
   })
 
   it('reloads while the modal stays open', async () => {
-    render(<TextFormatsSection />)
-    expect(await boldClassOptions()).toEqual(['before-class'])
+    render(<SiteNameProbe />)
+    expect(await shownName()).toBe('Before import')
     served = after
     requestCmsSiteReload()
-    await waitFor(async () => expect(await boldClassOptions()).toEqual(['imported-one', 'imported-two']))
+    await waitFor(async () => expect(await shownName()).toBe('Imported site'))
   })
 
   it('does not refetch after its own save', async () => {
-    render(<TextFormatsSection />)
-    await boldClassOptions()
+    render(<SiteNameProbe />)
+    await shownName()
     const loadsBefore = loads
-    fireEvent.click(screen.getByRole('button', { name: 'Add format' }))
-    await waitFor(() => expect(screen.getAllByText('Remove format').length).toBe(3))
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    await waitFor(async () => expect(await shownName()).toBe('Before import+'))
     // Let the chained save settle (it dispatches the reload event itself).
     await new Promise((r) => setTimeout(r, 20))
     expect(loads).toBe(loadsBefore)
@@ -110,17 +104,17 @@ describe('Settings outside the Site editor after an out-of-modal site write', ()
       if (loads === 1) await gate
       return { site, rowSeqs: {}, shellSeq: loads }
     }
-    render(<TextFormatsSection />)
+    render(<SiteNameProbe />)
     await waitFor(() => expect(loads).toBe(1))
     served = after
     requestCmsSiteReload()
     release?.()
-    await waitFor(async () => expect(await boldClassOptions()).toEqual(['imported-one', 'imported-two']))
+    await waitFor(async () => expect(await shownName()).toBe('Imported site'))
   })
 
   it('a reload that started before a save never rolls the save back', async () => {
-    render(<TextFormatsSection />)
-    await boldClassOptions()
+    render(<SiteNameProbe />)
+    await shownName()
     // A reload starts; its response is held back and carries the old document.
     let release: (() => void) | undefined
     const gate = new Promise<void>((r) => { release = r })
@@ -133,27 +127,40 @@ describe('Settings outside the Site editor after an out-of-modal site write', ()
       if (loads === 2) await gate
       return { site: snapshot.site, rowSeqs: {}, shellSeq: snapshot.seq }
     }
-    let savedBase: number | undefined
     const seqs: number[] = []
     cmsAdapter.saveSite = async (doc, opts) => {
-      savedBase = opts?.shellBaseSeq
-      seqs.push(savedBase ?? -1)
+      seqs.push(opts?.shellBaseSeq ?? -1)
       served = doc
       serverSeq = 500 + seqs.length
       return { seq: serverSeq }
     }
     requestCmsSiteReload()
     await waitFor(() => expect(loads).toBe(2))
-    // Meanwhile the user adds a format; it saves (seq 500).
-    fireEvent.click(screen.getByRole('button', { name: 'Add format' }))
+    // Meanwhile the user renames the site; it saves (seq 501).
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     await waitFor(() => expect(seqs.length).toBe(1))
     release?.()
     await new Promise((r) => setTimeout(r, 30))
     // The old response did not replace the saved document …
-    await waitFor(() => expect(screen.getAllByText('Remove format').length).toBe(3))
+    await waitFor(async () => expect(await shownName()).toBe('Before import+'))
     // … nor rewind the conflict base: the next save builds on seq 500 or newer.
-    fireEvent.click(screen.getByRole('button', { name: 'Add format' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     await waitFor(() => expect(seqs.length).toBe(2))
     expect(seqs[1]).toBeGreaterThanOrEqual(500)
+  })
+})
+
+
+it('refreshes the real General settings inputs after an outside write', async () => {
+  render(<GeneralSection />)
+  const siteName = await screen.findByLabelText('Site Name')
+  await waitFor(() => expect((siteName as HTMLInputElement).value).toBe('Before import'))
+  served = { ...after, settings: { ...after.settings, metaTitle: 'Imported title', metaDescription: 'Imported description', language: 'fr' } }
+  requestCmsSiteReload()
+  await waitFor(() => {
+    expect((screen.getByLabelText('Site Name') as HTMLInputElement).value).toBe('Imported site')
+    expect((screen.getByLabelText('Meta Title') as HTMLInputElement).value).toBe('Imported title')
+    expect((screen.getByLabelText('Meta Description') as HTMLTextAreaElement).value).toBe('Imported description')
+    expect((screen.getByLabelText('Language') as HTMLInputElement).value).toBe('fr')
   })
 })

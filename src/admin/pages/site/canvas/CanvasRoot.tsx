@@ -22,9 +22,15 @@
  * - prefers-reduced-motion: CSS transitions are disabled for users who opt out
  */
 
-import { lazy, Suspense, useContext, useEffect, useEffectEvent, useRef } from 'react'
-import { useEditorStore, selectActiveCanvasPage, selectRightSidebarExpanded } from '@site/store/store'
-import type { Breakpoint } from '@core/page-tree'
+import { lazy, Suspense, useContext, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEditorStore, selectActiveCanvasPage, selectPropertiesPanelVisible, selectRightSidebarExpanded } from '@site/store/store'
+import type { Breakpoint, PageNode } from '@core/page-tree'
+import { useMobileViewport } from '@admin/lib/mobileViewport'
+import { canReadMedia } from '@admin/access'
+import { PhoneImageAction } from './PhoneImageAction'
+import { inlineTextEditSpec } from '@site/store/slices/inlineEditSlice'
+import { MoreHorizontalSolidIcon } from 'pixel-art-icons/icons/more-horizontal-solid'
+import { Button } from '@ui/components/Button'
 import { registry } from '@core/module-engine'
 import { getNodeDisplayName } from '@core/page-tree'
 import { ErrorBoundary } from '@ui/components/ErrorBoundary'
@@ -36,8 +42,10 @@ import { CanvasTransformLayer } from './CanvasTransformLayer'
 import { CanvasLiveSurface } from './CanvasLiveSurface'
 import { AgentSnapshotFrame } from './AgentSnapshotFrame'
 import { useRuntimeScriptBuild } from './useRuntimeScriptBuild'
+import { useCanvasToolbarLayout } from './useCanvasToolbarLayout'
 import { CanvasNotch } from './CanvasNotch'
 import { CanvasModeToggle } from './CanvasModeToggle'
+import { panSelectedCanvasNodeIntoView } from './revealSelectedCanvasNode'
 import { CanvasContextSelector } from './CanvasContextSelector'
 import { useCurrentAdminUser } from '@admin/sessionContext'
 import { usePublishEditorPresence } from '@site/collab/awarenessState'
@@ -59,9 +67,7 @@ import { useEditorPreference, readEditorSelectPreference } from '@site/preferenc
 import { useTemplatePreviewContext } from '@site/hooks/useTemplatePreviewContext'
 import { isCanvasTextEditing } from '@site/store/textEditing'
 import { startParagraphOrInlineEdit } from './paragraph/paragraphHostClaim'
-// Paragraph mode's formatting menu and editor pull in TipTap — separate
-// chunks, preloaded once the editable canvas is idle (see below).
-import { ParagraphBubbleMenu, preloadParagraphMode } from './paragraph/paragraphModeLoader'
+import { ParagraphModeLayer } from './paragraph/ParagraphModeLayer'
 import styles from './CanvasRoot.module.css'
 import { userDisplayLabel } from '@core/users/displayName'
 
@@ -72,7 +78,6 @@ const VisualComponentModeControl = lazy(() =>
 const TemplateModeControl = lazy(() =>
   import('./TemplateModeControl').then((module) => ({ default: module.default })),
 )
-
 
 /**
  * Stable empty-breakpoints sentinel — used as the `?? fallback` in the
@@ -85,6 +90,13 @@ const EMPTY_BREAKPOINTS: Breakpoint[] = []
 
 interface CanvasRootProps {
   editable?: boolean
+}
+
+function phoneContentAction(node: PageNode | undefined, canBrowseImages: boolean) {
+  if (!node || node.hidden) return null
+  if (node.moduleId === 'base.image' && canBrowseImages && !node.locked && !node.dynamicBindings?.src) return 'image'
+  const spec = inlineTextEditSpec(node)
+  return spec && typeof node.props[spec.prop] === 'string' ? 'text' : null
 }
 
 export function CanvasRoot({ editable = true }: CanvasRootProps) {
@@ -115,7 +127,8 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   const activeBreakpointId = useEditorStore((s) => s.activeBreakpointId)
   const canvasView = useEditorStore((s) => s.canvasView)
   const agentSnapshotCaptureRequest = useEditorStore((s) => s.agentSnapshotCaptureRequest)
-  const rightSidebarExpanded = useEditorStore(selectRightSidebarExpanded)
+  const phone = useMobileViewport()
+  const rightSidebarExpanded = useEditorStore(phone ? selectPropertiesPanelVisible : selectRightSidebarExpanded)
   const isLive = canvasView === 'live'
   const runScripts = useEditorStore((s) => s.runScripts)
   // selectedNodeId is needed here for canvas-level keyboard shortcuts (Delete, Ctrl+D).
@@ -140,7 +153,6 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   const cutNodes = useEditorStore((s) => s.cutNodes)
   const pasteNode = useEditorStore((s) => s.pasteNode)
   const setActiveBreakpoint = useEditorStore((s) => s.setActiveBreakpoint)
-  const paragraphEditing = useEditorStore((s) => s.activeParagraphEdit !== null)
   const setFocusedPanel = useEditorStore((s) => s.setFocusedPanel)
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument)
   const activeDocument = useEditorStore((s) => s.activeDocument)
@@ -155,6 +167,26 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   //   canEditContent → double-click inline text editing
   //   canEditStyle / canEditStructure → properties sidebar
   const permissions = useEditorPermissions()
+  const editingText = useEditorStore((s) => s.activeInlineEdit !== null)
+  const canShowContentActions = useEditorStore((s) =>
+    s.selectedNodeIds.length === 1 && s.propertiesPanel.collapsed &&
+    !s.collapsedBreakpointIds.includes(s.activeBreakpointId),
+  )
+  const endInlineEdit = useEditorStore((s) => s.endInlineEdit)
+  const setPropertiesPanel = useEditorStore((s) => s.setPropertiesPanel)
+  const phoneContentEnabled = phone && !isLive && editable && permissions.canEditContent
+  const canBrowseImages = canReadMedia(currentUser)
+  const selectedNode = selectedNodeId ? canvasPage?.nodes[selectedNodeId] : undefined
+  const action = phoneContentAction(selectedNode, canBrowseImages)
+  const showPhoneContentActions = phoneContentEnabled && canShowContentActions && selectedNodeId &&
+    action &&
+    breakpoints.some((bp) => bp.id === activeBreakpointId && bp.previewFrame !== false)
+  const phoneEditing = phone && editingText
+  const showContext = breakpoints.length > 0 && !isLive && !phoneEditing && (phone || rightSidebarExpanded) && (permissions.canEditStyle || permissions.canEditStructure)
+  const toolbarLayout = useCanvasToolbarLayout(canvasRef, editable && !phoneEditing, showContext, phone)
+  const compactChrome = toolbarLayout !== 'expanded'
+  const [layerActionsFor, setLayerActionsFor] = useState<string | null>(null)
+  const showLayerActions = layerActionsFor !== null && layerActionsFor === selectedNodeId
   // Auto-dim non-active breakpoints when a layer is selected and the
   // properties panel is open — gated by the `dimInactiveBreakpoints` user
   // preference so designers comparing breakpoints side-by-side can keep
@@ -222,8 +254,8 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   // and depending on the object would re-run this effect — cancelling the
   // in-flight retry before it fires — on every keystroke during load. Keying on
   // the id (null during the skeleton phase) means we run once per document:
-  // ordinary editing never yanks the canvas, and breakpoint switches (toolbar,
-  // node clicks) keep the designer's place.
+  // ordinary edits and clicks inside frames preserve the designer's place.
+  // Explicit picker navigation reveals its target separately.
   //
   // We retry on a short timer rather than requestAnimationFrame because the
   // frames mount a few ticks after the effect runs (the per-frame iframes lay
@@ -290,7 +322,9 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
       : e.metaKey || e.ctrlKey
         ? 'toggle'
         : 'replace'
-    selectNode(nodeId, mode)
+    const preservePropertiesPanelCollapse = phoneContentEnabled && mode === 'replace' &&
+      Boolean(phoneContentAction(selectActiveCanvasPage(useEditorStore.getState())?.nodes[nodeId], canBrowseImages))
+    selectNode(nodeId, mode, { propertiesPanel: preservePropertiesPanelCollapse ? 'preserve' : 'open' })
     setFocusedPanel('canvas')
   }
 
@@ -324,47 +358,19 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   }
 
   /**
-   * Double-click on a canvas node → paragraph mode first: when the node is a
-   * paragraph (or a run inside one) and the clicked render path may host the
-   * editor (`paragraphHostAllowed` — false in loop iterations and snapshot
-   * frames), `startParagraphEdit` opens a rich-text session; the click's
-   * iframe coordinates place the caret. Otherwise fall back to the plain inline text-edit session when the node's
-   * module declares `inlineTextEdit` (base.text, base.button, childless
-   * base.link — `startInlineEdit` resolves the contract and no-ops for
-   * everything else, so other modules keep the old no-op).
+   * Double-click on a canvas node → paragraph mode (rich-text session, caret at
+   * the click) when the node is a paragraph and the render path may host the
+   * editor (not in loop iterations or snapshot frames); else `startInlineEdit`.
    *
    * Design-canvas only: the editing element lives inside a breakpoint iframe,
    * so a live-mode double-click must not open a session. Entering VC canvas
    * mode on double-click stays removed — VC entry works from the Site panel
    * and Spotlight (see `docs/features/canvas-iframe-per-frame.md`).
    */
-  // Warm paragraph mode's chunks once the editable canvas is idle, so the
-  // first double-click mounts the editor at once instead of waiting on them.
-  const canEditContent = permissions.canEditContent
-  useEffect(() => {
-    if (isLive || !editable || !canEditContent) return
-    const w = window as Window & {
-      requestIdleCallback?: (cb: () => void, options?: { timeout?: number }) => number
-      cancelIdleCallback?: (id: number) => void
-    }
-    if (typeof w.requestIdleCallback === 'function') {
-      const id = w.requestIdleCallback(preloadParagraphMode, { timeout: 3000 })
-      return () => w.cancelIdleCallback?.(id)
-    }
-    const timer = window.setTimeout(preloadParagraphMode, 1000)
-    return () => window.clearTimeout(timer)
-  }, [isLive, editable, canEditContent])
-
-  const onNodeDoubleClick = (
-    nodeId: string,
-    e: React.MouseEvent,
-    breakpointId?: string,
-    paragraphHostAllowed = true,
-  ) => {
+  const onNodeDoubleClick = (nodeId: string, e: React.MouseEvent, breakpointId?: string, paragraphHostAllowed = true) => {
     e.stopPropagation()
     if (isLive || !editable || !permissions.canEditContent) return
-    const bp = breakpointId ?? activeBreakpointId
-    startParagraphOrInlineEdit(nodeId, bp, { x: e.clientX, y: e.clientY }, paragraphHostAllowed)
+    startParagraphOrInlineEdit(nodeId, breakpointId ?? activeBreakpointId, { x: e.clientX, y: e.clientY }, paragraphHostAllowed)
   }
 
   // Context carries only stable callbacks — selectedNodeId/hoveredNodeId are
@@ -482,8 +488,10 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
           tabIndex={0}
           data-testid="canvas-root"
           data-instatic-canvas-root="true"
+          data-toolbar-layout={toolbarLayout}
           data-canvas-state={canvasPage ? 'canvas-ready' : 'canvas-empty'}
           data-canvas-view={canvasView}
+          data-hide-layer-actions={phoneEditing || (showPhoneContentActions && !showLayerActions) || undefined}
           data-vc-mode={activeDocument?.kind === 'visualComponent' ? 'true' : undefined}
           onKeyDown={onCanvasKeyDown}
           onClick={onCanvasClick}
@@ -506,44 +514,103 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
             breakpoint iframe now — mounted per-frame by IframeFrameSurface
             so the canvas sees the same cascade the published page sees. */}
 
-          {/* Insert toolbar — shown in both design and live modes. Both are
-            editable surfaces (live reuses the same editable iframe + selection
-            overlay), so the notch's quick-insert and history controls apply
-            equally; only the frame layout differs (all frames vs. one). In live
-            mode the frame is flush with the top edge, so the notch auto-hides
-            (peek) and rolls down on hover instead of overlaying the page. */}
-          {editable && (
-            <CanvasNotch
-              peek={isLive}
-              floatingControl={
-                activeDocument?.kind === 'visualComponent' ? (
-                  <Suspense fallback={null}>
-                    <VisualComponentModeControl />
-                  </Suspense>
-                ) : canvasPage?.template?.enabled ? (
-                  <Suspense fallback={null}>
-                    <TemplateModeControl />
-                  </Suspense>
-                ) : null
-              }
-            />
+          {!phoneEditing && (
+            <div className={styles.canvasToolbar}>
+              <CanvasModeToggle
+                peek={isLive}
+                scriptStatus={scriptBuild.status}
+                onRefreshScripts={scriptBuild.refresh}
+              />
+              {editable && (
+                <CanvasNotch
+                  peek={isLive}
+                  compact={compactChrome}
+                  floatingControl={
+                    activeDocument?.kind === 'visualComponent' ? (
+                      <Suspense fallback={null}>
+                        <VisualComponentModeControl />
+                      </Suspense>
+                    ) : canvasPage?.template?.enabled ? (
+                      <Suspense fallback={null}>
+                        <TemplateModeControl />
+                      </Suspense>
+                    ) : null
+                  }
+                />
+              )}
+            </div>
           )}
 
-          {/* Design / Live view toggle — top-left chrome. In live mode this
-            also hosts inline breakpoint switcher buttons, and the toggle owns
-            the "Run scripts" switch + its build status / Refresh. */}
-          <CanvasModeToggle
-            peek={isLive}
-            scriptStatus={scriptBuild.status}
-            onRefreshScripts={scriptBuild.refresh}
-          />
+          {(phoneEditing || showPhoneContentActions) && (
+            <div
+              className={styles.phoneContentActions}
+              data-editing={phoneEditing}
+              role="group"
+              aria-label={action === 'image' ? 'Image editing' : 'Text editing'}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {phoneEditing ? (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  // Keep the inline editor focused until click. Canceling pointerdown also suppresses a WebKit touch click.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    endInlineEdit()
+                    clearSelection()
+                    hoverNode(null)
+                    canvasRef.current?.focus({ preventScroll: true })
+                  }}
+                >
+                  Done
+                </Button>
+              ) : selectedNodeId && (
+                <>
+                  {action === 'image' && selectedNode ? (
+                    <PhoneImageAction key={selectedNode.id} node={selectedNode} />
+                  ) : (
+                    <Button variant="primary" size="md" onClick={() => {
+                      setLayerActionsFor(null)
+                      useEditorStore.getState().startInlineEdit(selectedNodeId, activeBreakpointId)
+                    }}>
+                      Edit text
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="md" onClick={() => setPropertiesPanel({ collapsed: false })}>
+                    Properties
+                  </Button>
+                  {permissions.canEditStructure && (
+                    <Button
+                      variant="ghost"
+                      size="md"
+                      iconOnly
+                      aria-label="Layer actions"
+                      aria-expanded={showLayerActions}
+                      onClick={() => setLayerActionsFor(showLayerActions ? null : selectedNodeId)}
+                    >
+                      <MoreHorizontalSolidIcon size={14} aria-hidden="true" />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* The editing-context switcher targets per-context style overrides
               (viewports + custom conditions), so it's only meaningful for
               callers who can edit style or structure. Content-only Clients and
               pure Viewers get the same plain frames without this affordance. */}
-          {!isLive && rightSidebarExpanded && (permissions.canEditStyle || permissions.canEditStructure) && (
-            <CanvasContextSelector />
+          {showContext && (
+            <CanvasContextSelector
+              phone={phone}
+              compact={compactChrome}
+              onPickBreakpoint={(id) => {
+                setActiveBreakpoint(id)
+                if (!selectedNodeId || !panSelectedCanvasNodeIntoView(selectedNodeId)) {
+                  centerOnBreakpointFrame(id)
+                }
+              }}
+            />
           )}
 
           {/*
@@ -624,17 +691,7 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
             />
           ) : null}
         </div>
-
-        {/* Paragraph-mode formatting menu + link panel. Portaled to the editor
-            body and deliberately mounted OUTSIDE the canvas div: React events
-            bubble through portals along the component tree, so inside it a
-            press on the menu would reach the canvas div's pan/zoom gesture
-            handlers, its background-click deselect and its key handler. */}
-        {paragraphEditing && (
-          <Suspense fallback={null}>
-            <ParagraphBubbleMenu />
-          </Suspense>
-        )}
+        <ParagraphModeLayer enabled={!isLive && editable && permissions.canEditContent} />
       </CanvasSelectionContext.Provider>
     </CanvasViewportActionsContext.Provider>
   )

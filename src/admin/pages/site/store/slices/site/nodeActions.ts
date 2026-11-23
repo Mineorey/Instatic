@@ -30,6 +30,8 @@ import {
   wrapNode,
   wrapNodes,
   reindexNodeParents,
+  addMissingConditions,
+  createStyleRuleOrderAllocator,
 } from '@core/page-tree'
 import type { NodeTree, PageNode, SiteDocument } from '@core/page-tree'
 import {
@@ -45,12 +47,7 @@ import { wouldCreateCycle, syncSlotInstances, applySlotSyncResult } from '@core/
 import { pushToast } from '@ui/components/Toast'
 import { depthInTree, resolveActiveTreeTarget } from './helpers'
 import { pruneCanvasSelectionDraft } from '../selectionSlice'
-import {
-  createStyleRuleOrderAllocator,
-  indexStyleRulesByName,
-  linkImportedClassNames,
-  mergeImportedStyleRules,
-} from './importLinking'
+import { indexStyleRulesByName, linkImportedClassNames, mergeImportedStyleRules } from './importLinking'
 import type { SiteSlice, SiteSliceHelpers } from './types'
 
 type NodeActions = Pick<
@@ -63,7 +60,6 @@ type NodeActions = Pick<
   | 'deleteNodes'
   | 'updateNodeProps'
   | 'setNodeInlineStyles'
-  | 'removeNodeInlineStyleProperty'
   | 'clearNodeInlineStyles'
   | 'setBreakpointOverride'
   | 'clearBreakpointOverride'
@@ -168,7 +164,7 @@ function coalesceKeyForPatch(
 export function createNodeActions(helpers: SiteSliceHelpers): NodeActions {
   const { get, set, mutateActiveTree, mutateActiveTreeAndSite } = helpers
 
-  const actions: NodeActions = {
+  return {
     insertNode: (moduleId, defaults, parentId, index) => {
       const mod = registry.get(moduleId)
       const resolvedDefaults = { ...(mod?.defaults ?? {}), ...defaults }
@@ -241,15 +237,7 @@ export function createNodeActions(helpers: SiteSliceHelpers): NodeActions {
         }
         // Register any reusable conditions (custom @media / @container /
         // @supports) the <style> rules reference via contextStyles keys.
-        if (opts?.conditions?.length) {
-          if (!site.conditions) site.conditions = []
-          const existing = new Set(site.conditions.map((c) => c.id))
-          for (const def of opts.conditions) {
-            if (existing.has(def.id)) continue
-            existing.add(def.id)
-            site.conditions.push(def)
-          }
-        }
+        addMissingConditions(site, opts?.conditions ?? [])
 
         for (const [id, node] of Object.entries(fragment.nodes)) {
           // `node.inlineStyles` (imported inline `style="…"`) rides along on
@@ -378,10 +366,6 @@ export function createNodeActions(helpers: SiteSliceHelpers): NodeActions {
         else delete node.inlineStyles
         return true
       })
-    },
-
-    removeNodeInlineStyleProperty: (nodeId, propKey) => {
-      actions.setNodeInlineStyles(nodeId, { [propKey]: null })
     },
 
     clearNodeInlineStyles: (nodeId) => {
@@ -633,5 +617,4 @@ export function createNodeActions(helpers: SiteSliceHelpers): NodeActions {
     },
   }
 
-  return actions
 }
