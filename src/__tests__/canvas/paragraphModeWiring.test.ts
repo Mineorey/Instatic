@@ -41,6 +41,7 @@ describe('paragraph mode wiring', () => {
       'pages/site/canvas/useCanvasKeyboardShortcuts.ts',
       'pages/site/canvas/IframeFrameSurface.tsx',
       'pages/site/canvas/CanvasRoot.tsx',
+      'pages/site/canvas/useCanvasHistoryShortcuts.ts',
       'spotlight/shortcutDispatch.ts',
     ]) expect(read(file)).toContain('isCanvasTextEditing(')
   })
@@ -69,7 +70,7 @@ describe('paragraph mode wiring', () => {
     expect(loader).toContain("import('./paragraphEditor')")
     expect(loader).not.toMatch(/^import\s+(?!type\b)[^'"]*?from\s+'\.\/(paragraphEditor|ParagraphBubbleMenu)'/m)
     const canvasRoot = read('pages/site/canvas/CanvasRoot.tsx')
-    expect(canvasRoot).toContain("import { ParagraphModeLayer } from './paragraph/ParagraphModeLayer'")
+    expect(canvasRoot).toContain("import { ParagraphModeLayer, startParagraphOrInlineEdit } from './paragraph'")
     expect(canvasRoot).toContain('<ParagraphModeLayer enabled={!isLive && editable && permissions.canEditContent} />')
     const layer = read('pages/site/canvas/paragraph/ParagraphModeLayer.tsx')
     expect(layer).toContain("import { ParagraphBubbleMenu, preloadParagraphMode } from './paragraphModeLoader'")

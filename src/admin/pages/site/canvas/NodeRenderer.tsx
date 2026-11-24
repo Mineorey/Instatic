@@ -35,6 +35,7 @@ import type { PageNode } from '@core/page-tree'
 import { WarningDiamondSolidIcon } from 'pixel-art-icons/icons/warning-diamond-solid'
 import { ErrorBoundary } from '@ui/components/ErrorBoundary'
 import { ModuleSandboxFrame } from './ModuleSandboxFrame'
+import { approvalGroup } from '@core/members'
 import {
   CanvasBreakpointContext,
   CanvasParagraphHostContext,
@@ -239,6 +240,8 @@ export const NodeRenderer = memo(function NodeRenderer({ nodeId }: NodeRendererP
 
   if (!node) return null
   if (node.hidden) return null
+  const group = approvalGroup(node.props)
+  if (group && templateContext?.approval && group !== templateContext.approval.state) return null
 
   const definition = registry.get(node.moduleId)
   if (!definition) {

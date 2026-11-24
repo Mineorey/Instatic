@@ -22,9 +22,10 @@
  * - prefers-reduced-motion: CSS transitions are disabled for users who opt out
  */
 
-import { lazy, Suspense, useContext, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { lazy, Suspense, useContext, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react'
+import { hasPluginLivePreview, subscribePluginLivePreview } from '@core/plugins/livePreview'
 import { useEditorStore, selectActiveCanvasPage, selectPropertiesPanelVisible, selectRightSidebarExpanded } from '@site/store/store'
-import type { Breakpoint, PageNode } from '@core/page-tree'
+import { getNodeDisplayName, type Breakpoint, type PageNode } from '@core/page-tree'
 import { useMobileViewport } from '@admin/lib/mobileViewport'
 import { canReadMedia } from '@admin/access'
 import { PhoneImageAction } from './PhoneImageAction'
@@ -32,17 +33,17 @@ import { inlineTextEditSpec } from '@site/store/slices/inlineEditSlice'
 import { MoreHorizontalSolidIcon } from 'pixel-art-icons/icons/more-horizontal-solid'
 import { Button } from '@ui/components/Button'
 import { registry } from '@core/module-engine'
-import { getNodeDisplayName } from '@core/page-tree'
 import { ErrorBoundary } from '@ui/components/ErrorBoundary'
 import { SpotlightContext } from '@admin/spotlight/spotlightContext'
 import { getKeybindingForCommand } from '@admin/spotlight/keybindings'
 import { useCanvas } from '@site/hooks/useCanvas'
 import { useEditorPermissions } from '@site/editorPermissionsContext'
 import { CanvasTransformLayer } from './CanvasTransformLayer'
-import { CanvasLiveSurface } from './CanvasLiveSurface'
+import { CanvasLiveSurface, type PreviewScale } from './CanvasLiveSurface'
 import { AgentSnapshotFrame } from './AgentSnapshotFrame'
 import { useRuntimeScriptBuild } from './useRuntimeScriptBuild'
 import { useCanvasToolbarLayout } from './useCanvasToolbarLayout'
+import { useCanvasHistoryShortcuts } from './useCanvasHistoryShortcuts'
 import { CanvasNotch } from './CanvasNotch'
 import { CanvasModeToggle } from './CanvasModeToggle'
 import { panSelectedCanvasNodeIntoView } from './revealSelectedCanvasNode'
@@ -64,10 +65,10 @@ import { useCanvasKeyboardShortcuts } from './useCanvasKeyboardShortcuts'
 import { clientPointToEditorDoc } from './canvasDomGeometry'
 import { useConfirmDelete } from '@admin/shared/dialogs/ConfirmDeleteDialog'
 import { useEditorPreference, readEditorSelectPreference } from '@site/preferences/editorPreferences'
+import { useAppPairPreview } from './useAppPairPreview'
 import { useTemplatePreviewContext } from '@site/hooks/useTemplatePreviewContext'
 import { isCanvasTextEditing } from '@site/store/textEditing'
-import { startParagraphOrInlineEdit } from './paragraph/paragraphHostClaim'
-import { ParagraphModeLayer } from './paragraph/ParagraphModeLayer'
+import { ParagraphModeLayer, startParagraphOrInlineEdit } from './paragraph'
 import styles from './CanvasRoot.module.css'
 import { userDisplayLabel } from '@core/users/displayName'
 
@@ -100,6 +101,7 @@ function phoneContentAction(node: PageNode | undefined, canBrowseImages: boolean
 }
 
 export function CanvasRoot({ editable = true }: CanvasRootProps) {
+  useCanvasHistoryShortcuts(editable)
   const transformLayerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const spotlight = useContext(SpotlightContext)
@@ -125,7 +127,10 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   const canvasPage = useEditorStore(selectActiveCanvasPage)
   const breakpoints = useEditorStore((s) => s.site?.breakpoints ?? EMPTY_BREAKPOINTS)
   const activeBreakpointId = useEditorStore((s) => s.activeBreakpointId)
-  const canvasView = useEditorStore((s) => s.canvasView)
+  const savedView = useEditorStore((s) => s.canvasView)
+  const dockedPreview = useSyncExternalStore(subscribePluginLivePreview, hasPluginLivePreview)
+  const [previewScale, setPreviewScale] = useState<PreviewScale>('fit')
+  const canvasView = dockedPreview ? 'live' : savedView
   const agentSnapshotCaptureRequest = useEditorStore((s) => s.agentSnapshotCaptureRequest)
   const phone = useMobileViewport()
   const rightSidebarExpanded = useEditorStore(phone ? selectPropertiesPanelVisible : selectRightSidebarExpanded)
@@ -157,9 +162,10 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument)
   const activeDocument = useEditorStore((s) => s.activeDocument)
   const {
-    context: templatePreviewContext,
+    context: pagePreviewContext,
     loading: templatePreviewContextLoading,
   } = useTemplatePreviewContext(canvasPage)
+  const { templatePreviewContext, stateControl } = useAppPairPreview(canvasPage, pagePreviewContext)
   const agentSnapshotBreakpoint = agentSnapshotCaptureRequest
     ? breakpoints.find((breakpoint) => breakpoint.id === agentSnapshotCaptureRequest.breakpointId) ?? null
     : null
@@ -358,9 +364,8 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
   }
 
   /**
-   * Double-click on a canvas node → paragraph mode (rich-text session, caret at
-   * the click) when the node is a paragraph and the render path may host the
-   * editor (not in loop iterations or snapshot frames); else `startInlineEdit`.
+   * Double-click on a canvas node → paragraph mode (caret at the click) when the
+   * node is a paragraph and the render path may host the editor; else `startInlineEdit`.
    *
    * Design-canvas only: the editing element lives inside a breakpoint iframe,
    * so a live-mode double-click must not open a session. Entering VC canvas
@@ -517,16 +522,17 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
           {!phoneEditing && (
             <div className={styles.canvasToolbar}>
               <CanvasModeToggle
-                peek={isLive}
+                scaleControl={dockedPreview ? { value: previewScale, onChange: setPreviewScale } : undefined}
+                peek={isLive && !dockedPreview}
                 scriptStatus={scriptBuild.status}
                 onRefreshScripts={scriptBuild.refresh}
               />
-              {editable && (
+              {editable && !dockedPreview && (
                 <CanvasNotch
                   peek={isLive}
                   compact={compactChrome}
                   floatingControl={
-                    activeDocument?.kind === 'visualComponent' ? (
+                    stateControl ?? (activeDocument?.kind === 'visualComponent' ? (
                       <Suspense fallback={null}>
                         <VisualComponentModeControl />
                       </Suspense>
@@ -534,7 +540,7 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
                       <Suspense fallback={null}>
                         <TemplateModeControl />
                       </Suspense>
-                    ) : null
+                    ) : null)
                   }
                 />
               )}
@@ -626,6 +632,7 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
           >
             {isLive ? (
               <CanvasLiveSurface
+                previewScale={dockedPreview ? previewScale : undefined}
                 page={canvasPage}
                 activeBreakpoint={activeBreakpoint}
                 templateContext={templatePreviewContext}
@@ -646,13 +653,8 @@ export function CanvasRoot({ editable = true }: CanvasRootProps) {
             )}
           </ErrorBoundary>
 
-          {/*
-          Plugin-registered canvas overlays. Mounted after the transform
-          layer so they paint above rendered nodes. Only active in design
-          (editable) mode — preview-mode canvases don't need overlays and
-          plugin code shouldn't paint over the visitor preview.
-        */}
-          {!isLive && editable && <PluginCanvasOverlayLayer />}
+          {/* Live surfaces render only overlays that opt in. */}
+          {editable && <PluginCanvasOverlayLayer live={isLive} />}
 
           {!isLive && editable && contextMenu.position && (
             <CanvasLayerContextMenu
