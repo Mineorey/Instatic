@@ -126,7 +126,9 @@ const BUDGETS: ChunkBudget[] = [
     // Raised from 30 KB when site branches landed: the publish gate (disabled
     // with the inline reason on a branch), the version-history entry, and the
     // per-branch persistence hook are part of the shell by design (~+1 KB raw).
-    maxBytes: 32_000,
+    // Fork: raised 32 → 33 KB for paragraph mode's store slice and text-edit
+    // guards (~+0.3 KB raw on top of upstream 0.0.24's ~31.9 KB).
+    maxBytes: 33_000,
     rationale:
       'site route shell (current ~31 KB raw / ~10 KB gzipped). Must not ' +
       'pull the visual editor body, DnD, canvas, first-party modules, or ' +
@@ -134,7 +136,10 @@ const BUDGETS: ChunkBudget[] = [
   },
   {
     prefix: 'AdminCanvasEditorBody-',
-    maxBytes: 780_000,
+    // Fork: raised 780 → 800 KB for paragraph mode (host, commands, link panel
+    // wiring; ~+9 KB raw on top of upstream 0.0.24's ~778 KB). TipTap and the
+    // bubble menu stay in their own lazy chunks (paragraphModeLoader).
+    maxBytes: 800_000,
     rationale:
       'post-paint Site editor body (canvas + panels + modules + publisher). ' +
       'Current ~724 KB raw / ~228 KB gzipped after moving Import HTML behind ' +
